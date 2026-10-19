@@ -1,0 +1,36 @@
+{
+  "name": "leis",
+  "desc": "Leis de trabalho que o Claude Code obedece, com regra, hook, validação e medição",
+  "lang": "pt",
+  "palette": "candiani",
+  "author": "candiani",
+  "license": "MIT",
+  "typing": [
+    "Leis de trabalho que o Claude Code obedece",
+    "Sigla, teste de sim ou não, erro real e correção",
+    "Hooks fiscalizam, registram e medem cada quebra",
+    "Seis leis-modelo, zero dependência, Node 22"
+  ],
+  "tagline": "Regra escrita, hook que fiscaliza, validação e medição, num plugin do Claude Code.",
+  "badges": [
+    "license",
+    "claude",
+    "ci:ci.yml",
+    { "label": "Node", "msg": "22", "logo": "nodedotjs" },
+    { "label": "dependências", "msg": "zero", "color": "ACCENT" },
+    "prs"
+  ],
+  "pitch": "**leis** troca o arquivo de regras que a sessão esquece por leis com sigla que se lê como palavra, teste de sim ou não e um hook que registra cada quebra. Começa em modo observar, passa a bloquear lei por lei e mostra o número no `/leis:leis-medir`.",
+  "notice": "Projeto independente, sem vínculo com a Anthropic. \"Claude\" e \"Claude Code\" são marcas da Anthropic.",
+  "what": {
+    "produto": "plugin do Claude Code que faz as leis de trabalho valerem",
+    "leis": "seis leis-modelo, troque pelas suas",
+    "hooks": "sessao, relato, fiscal-resposta e fiscal-acao, todos falham abertos",
+    "modos": "observar (padrão) ou bloquear, por lei",
+    "medicao": "registro local em JSONL, /leis:leis-medir por lei, 24 h e 7 d",
+    "privacidade": "registro só na sua máquina, token, e-mail e telefone mascarados",
+    "instalar": "claude plugin marketplace add leonardocandiani/leis · claude plugin install leis@leis",
+    "requisitos": "Node 22 (testado no CI), chave do JEV opcional",
+    "licença": "MIT"
+  }
+}
