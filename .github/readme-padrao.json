@@ -15,6 +15,7 @@
   "badges": [
     "license",
     "claude",
+    "release",
     "ci:ci.yml",
     { "label": "Node", "msg": "22", "logo": "nodedotjs" },
     { "label": "dependências", "msg": "zero", "color": "ACCENT" },

@@ -16,6 +16,7 @@
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-00d9ff?style=for-the-badge" alt="License: MIT" /></a>
     <a href="https://docs.claude.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Made%20for-Claude%20Code-D97757?style=for-the-badge&logo=anthropic&logoColor=white" alt="Made for: Claude Code" /></a>
+    <a href="https://github.com/leonardocandiani/leis/releases"><img src="https://img.shields.io/github/v/release/leonardocandiani/leis?display_name=tag&style=for-the-badge&color=00d9ff&labelColor=1a1a2e" alt="Release" /></a>
     <a href="https://github.com/leonardocandiani/leis/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/leonardocandiani/leis/ci.yml?style=for-the-badge&labelColor=1a1a2e&label=CI" alt="CI" /></a>
     <img src="https://img.shields.io/badge/Node-22-1a1a2e?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node: 22" />
     <img src="https://img.shields.io/badge/depend%C3%AAncias-zero-00d9ff?style=for-the-badge" alt="dependências: zero" />
