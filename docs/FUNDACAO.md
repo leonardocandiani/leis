@@ -48,7 +48,9 @@ opções dadas (select, never generate). A citação explícita de uma lei no `r
 JEV; o JEV entra quando o dono corrige sem dizer qual lei.
 
 **Pular onde há portão.** Num projeto que já tem portão próprio (`scripts/central/hooks/portao.ts`), o
-`fiscal-acao` sai sem fazer nada, para não chamar o JEV duas vezes nem negar duas vezes.
+`fiscal-acao` sai sem fazer nada, para não chamar o JEV duas vezes nem negar duas vezes. Pelo mesmo motivo o
+`fiscal-resposta` sai quando o projeto tem `scripts/central/hooks/parada.ts`, que já devolve a sessão ao trabalho
+quando ela termina pedindo decisão.
 
 **Registro fora do repositório.** `~/.claude/leis/registro.jsonl`, com o trecho mascarado (segredo, e-mail,
 telefone) e limitado a 200 caracteres. Sem rede, sem serviço, sem banco.
