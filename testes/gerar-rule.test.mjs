@@ -15,6 +15,10 @@ test('a rule gerada traz cabeçalho, tabela das seis leis, equilíbrio e vedaç�
   assert.ok(md.startsWith(CABECALHO));
   assert.match(CABECALHO, /Gerado de ~\/\.claude\/leis\/leis\.json por \/leis-implantar; edite o json/);
   for (const sigla of ['T.O.P.', 'J.Á.', 'T.R.O.C.A.', 'L.I.D.A.', 'S.I.M.', 'A.V.A.L.']) assert.ok(md.includes(`| ${sigla} |`), sigla);
+  assert.match(md, /## Lei 1, T\.O\.P\., Tudo Ordenado e Pronto\n\*\*Regra\.\*\* .*\n\*\*Teste\.\*\* .*\n\*\*Como se aplica\.\*\*\n- Abra pelo resultado/);
+  assert.match(md, /\*\*Erro\.\*\* .*\n\*\*Correção\.\*\* /);
+  assert.ok(md.indexOf('| Lei | Sigla') < md.indexOf('## Lei 1'));
+  assert.ok(!md.includes('Fontes:'));
   assert.match(md, /## Equilíbrio\n- Invariante vence lei/);
   assert.match(md, /## O que nunca fazer\n- Entregar ao dono/);
 });
@@ -49,4 +53,37 @@ test('a CLI gera a partir do leis.json do usuário e recusa o modelo padrão', (
   const com = spawnSync('node', [script, '--saida', saida], { encoding: 'utf8', env: process.env });
   assert.equal(com.status, 0);
   assert.match(readFileSync(saida, 'utf8'), /# Leis do Ana/);
+});
+
+test('fontes viram uma linha no topo; lei sem aplicacao não ganha a seção Como se aplica', () => {
+  const c = modelo();
+  c.fontes = [{ rotulo: 'Texto vivo', caminho_ou_url: 'docs/leis.md' }, { rotulo: 'Site', caminho_ou_url: 'https://exemplo.org/leis' }];
+  delete c.leis[2].aplicacao;
+  const md = gerarRegra(c);
+  assert.match(md, /^Fontes: Texto vivo \(docs\/leis\.md\); Site \(https:\/\/exemplo\.org\/leis\)$/m);
+  const lei3 = md.slice(md.indexOf('## Lei 3'), md.indexOf('## Lei 4'));
+  assert.ok(!lei3.includes('Como se aplica'));
+});
+
+test('--help e --seco não escrevem nada; flag desconhecida sai com 2 sem escrever', () => {
+  const script = new URL('../scripts/gerar-rule.mjs', import.meta.url).pathname;
+  const c = modelo();
+  c.dono = 'Ana';
+  escreverConfig(c);
+  const saida = join(raiz, 'nao-pode-existir.md');
+  const rodar = (...args) => spawnSync('node', [script, ...args], { encoding: 'utf8', env: process.env });
+  const ajuda = rodar('--help', '--saida', saida);
+  assert.equal(ajuda.status, 0);
+  assert.match(ajuda.stdout, /Exemplos \(examples\)/);
+  const seco = rodar('--seco', '--saida', saida);
+  assert.equal(seco.status, 0);
+  assert.match(seco.stdout, /nada foi escrito/);
+  assert.match(seco.stdout, /# Leis do Ana/);
+  for (const ruim of [['--forca', '--saida', saida], ['qualquer'], ['--saida']]) {
+    const r = rodar(...ruim);
+    assert.equal(r.status, 2, ruim.join(' '));
+    assert.match(r.stdout, /^error: .*\ncode: USO/);
+  }
+  assert.equal(existsSync(saida), false);
+  assert.equal(existsSync(join(process.env.CLAUDE_CONFIG_DIR, 'rules', 'leis.md')), false);
 });

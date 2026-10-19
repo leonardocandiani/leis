@@ -24,15 +24,21 @@ function erroDoNumero(lei, onde, numerosVistos) {
   return null;
 }
 
+function errosOpcionaisDaLei(lei, onde) {
+  const erros = [];
+  if (lei.papel !== undefined && !ehTexto(lei.papel)) erros.push(`${onde}.papel deve ser texto não vazio`);
+  if (lei.aplicacao !== undefined && !ehListaDeTextos(lei.aplicacao)) erros.push(`${onde}.aplicacao deve ser lista de textos`);
+  if (!ehListaDeTextos(lei.apelidos)) erros.push(`${onde}.apelidos deve ser lista de textos`);
+  return erros;
+}
+
 function errosDaLei(lei, indice, numerosVistos) {
   const onde = `leis[${indice}]`;
   if (!lei || typeof lei !== 'object') return [`${onde} não é objeto`];
   const erros = [erroDoNumero(lei, onde, numerosVistos)].filter(Boolean);
   for (const campo of CAMPOS_TEXTO) if (!ehTexto(lei[campo])) erros.push(`${onde}.${campo} ausente ou vazio`);
   if (ehTexto(lei.sigla) && !SIGLA.test(lei.sigla)) erros.push(`${onde}.sigla "${lei.sigla}" deve ser maiúsculas separadas por ponto, como T.O.P.`);
-  if (lei.papel !== undefined && !ehTexto(lei.papel)) erros.push(`${onde}.papel deve ser texto não vazio`);
-  if (!ehListaDeTextos(lei.apelidos)) erros.push(`${onde}.apelidos deve ser lista de textos`);
-  return erros;
+  return [...erros, ...errosOpcionaisDaLei(lei, onde)];
 }
 
 function errosDePapeis(leis) {
@@ -42,6 +48,12 @@ function errosDePapeis(leis) {
     if (!vistos.has(l.papel)) return (vistos.add(l.papel), []);
     return [`papel "${l.papel}" repetido`];
   });
+}
+
+function errosDasFontes(fontes) {
+  if (fontes === undefined) return [];
+  const ok = Array.isArray(fontes) && fontes.every((f) => ehTexto(f?.rotulo) && ehTexto(f?.caminho_ou_url));
+  return ok ? [] : ['fontes deve ser lista de {rotulo, caminho_ou_url}'];
 }
 
 function errosDoJev(jev) {
@@ -70,7 +82,7 @@ export function validarEsquema(c) {
   c.leis.forEach((lei, i) => erros.push(...errosDaLei(lei, i, numeros)));
   if (!ehListaDeTextos(c.equilibrio)) erros.push('equilibrio deve ser lista de textos');
   if (!ehListaDeTextos(c.vedacoes)) erros.push('vedacoes deve ser lista de textos');
-  erros.push(...errosDePapeis(c.leis), ...errosDoJev(c.jev), ...errosDosModos(c.modos, numeros));
+  erros.push(...errosDePapeis(c.leis), ...errosDoJev(c.jev), ...errosDasFontes(c.fontes), ...errosDosModos(c.modos, numeros));
   return erros;
 }
 

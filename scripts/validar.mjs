@@ -5,6 +5,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { opcoesOuSair } from './cli.mjs';
 import { ehPrincipal } from './entrada.mjs';
 import { carregarConfig, casaDoUsuario } from './leis.mjs';
 import { chaveDisponivel, perguntar } from './jev.mjs';
@@ -87,6 +88,7 @@ export function paraToon(itens) {
 }
 
 if (ehPrincipal(import.meta.url)) {
+  opcoesOuSair({}, 'Confere se as leis estão implantadas (config, hooks, chave do JEV, JEV, registro).\n\nUso: node validar.mjs [--help]\n\nExemplos (examples):\n  node validar.mjs\n\nSaída TOON; exit 0 sem falha, 1 com falha, 2 em erro de uso.');
   const itens = await validar();
   process.stdout.write(`${paraToon(itens)}\n`);
   process.exitCode = itens.some((i) => i.estado === 'falha') ? 1 : 0;

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Mede o registro das leis: por lei e natureza, nas últimas 24 h e 7 d. Só leitura.
 // Uso: node medir.mjs [--json]
+import { opcoesOuSair } from './cli.mjs';
 import { ehPrincipal } from './entrada.mjs';
 import { lerRegistro } from './registro.mjs';
 import { tabela } from './toon.mjs';
@@ -53,6 +54,7 @@ export function paraToon(resultado) {
 }
 
 if (ehPrincipal(import.meta.url)) {
+  const opcoes = opcoesOuSair({ '--json': 'flag' }, 'Mede o registro das leis nas últimas 24 h e 7 d. Só leitura.\n\nUso: node medir.mjs [--json] [--help]\n\nExemplos (examples):\n  node medir.mjs\n  node medir.mjs --json');
   const resultado = medir(lerRegistro(0));
-  process.stdout.write(`${process.argv.includes('--json') ? JSON.stringify(resultado, null, 2) : paraToon(resultado)}\n`);
+  process.stdout.write(`${opcoes['--json'] ? JSON.stringify(resultado, null, 2) : paraToon(resultado)}\n`);
 }

@@ -53,3 +53,14 @@ test('hooks.json: todo comando usa o ponteiro do plugin e aponta para um script 
     assert.doesNotThrow(() => readFileSync(`${raiz}scripts/${arquivo}`));
   }
 });
+
+test('validar e medir: --help sai com 0 e flag desconhecida com 2, sem efeito', () => {
+  for (const script of ['validar', 'medir']) {
+    const ajuda = spawnSync('node', [`${raiz}scripts/${script}.mjs`, '--help'], { encoding: 'utf8', env: process.env });
+    assert.equal(ajuda.status, 0, script);
+    const ruim = spawnSync('node', [`${raiz}scripts/${script}.mjs`, '--xyz'], { encoding: 'utf8', env: process.env });
+    assert.equal(ruim.status, 2, script);
+    assert.match(ruim.stdout, /code: USO/);
+  }
+  assert.equal(registro().length, 0);
+});

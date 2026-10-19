@@ -72,6 +72,12 @@ Rode `/leis:leis-nova <o que a lei deve garantir>`. Uma lei tem: sigla pronunci�
 próprio), caput de uma frase, teste de sim ou não, um erro real com a correção, as vedações e o equilíbrio com as
 leis que ela pode contrariar. Lei sem mecanismo e sem medição é texto: o comando avisa.
 
+Campos opcionais do `leis.json`: por lei, `aplicacao` (lista de frases de "como se aplica") e `papel`; no topo,
+`fontes` (lista de `{rotulo, caminho_ou_url}`) e `jev.arquivos_chave`. O gerador da rule escreve a tabela-resumo, a
+linha de fontes e, por lei, uma seção com regra, teste, como se aplica, erro e correção.
+`node scripts/gerar-rule.mjs --seco` mostra o que geraria sem escrever; `--help` lista as opções, e flag
+desconhecida sai com erro de uso (exit 2), sem efeito, em todos os scripts.
+
 ## Registro e privacidade
 
 Cada evento vira uma linha em `~/.claude/leis/registro.jsonl`: `ts`, `maquina`, `sessao`, `projeto`, `hook`, `lei`,

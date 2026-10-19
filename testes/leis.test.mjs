@@ -87,3 +87,15 @@ test('o esquema valida papel e jev.arquivos_chave', () => {
   delete sem.jev;
   assert.deepEqual(validarEsquema(sem), []);
 });
+
+test('o esquema valida aplicacao e fontes', () => {
+  const c = modelo();
+  c.leis[0].aplicacao = 'texto solto';
+  c.fontes = [{ rotulo: 'x' }];
+  const erros = validarEsquema(c).join('\n');
+  assert.match(erros, /leis\[0\]\.aplicacao/);
+  assert.match(erros, /fontes deve ser lista/);
+  const ok = modelo();
+  ok.fontes = [{ rotulo: 'a', caminho_ou_url: 'b' }];
+  assert.deepEqual(validarEsquema(ok), []);
+});
