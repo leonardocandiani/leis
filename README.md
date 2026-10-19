@@ -106,15 +106,17 @@ O texto completo de cada uma, com erro e correção, está em `leis/modelo.json`
 
 Cada lei do modelo tem um `papel` (`pronto`, `antes`, `troca`, `leitura`, `sim`, `aval`). Os fiscais procuram a lei pelo papel, não pelo número: renumerar não quebra nada. Lei sem papel conhecido não é fiscalizada por hook, só pelo `relato` e pela auditoria.
 
-### Modos observar e bloquear
+### Autocorreção e modos
 
-O padrão é `observar`: o hook registra e avisa, não nega. Para uma lei passar a bloquear, ponha `"bloquear"` em `modos` no seu `leis.json` (a chave é o número da lei):
+Quando o JEV confirma que a resposta final quebrou T.O.P. ou S.I.M., o `fiscal-resposta` devolve a sessão ao trabalho no mesmo turno, com a lei, o teste e a correção: ela escolhe o padrão, executa e entrega o resultado, em vez de parar esperando você. Se a mesma lei já foi quebrada no mesmo projeto nos últimos 7 dias, a instrução manda gravar o aprendizado na memória ou nas regras do projeto, trocando a regra velha (T.R.O.C.A.). Isso vale em qualquer modo, porque o custo de um falso positivo é só um turno a mais.
+
+Os modos valem para as ações de risco (`fiscal-acao`), onde negar tem custo real. O padrão é `observar`: o hook registra e avisa, não nega. Para uma lei passar a bloquear, ponha `"bloquear"` em `modos` no seu `leis.json` (a chave é o número da lei):
 
 ```json
 { "modos": { "1": "bloquear" } }
 ```
 
-O bloqueio do Stop tem teto de um seguido por turno, para a sessão nunca travar num laço. Em `observar`, a quebra que o `fiscal-resposta` viu vira pendência da sessão e o próximo prompt injeta "Na resposta anterior você quebrou a ...", uma vez, para o modelo aprender.
+A autocorreção do Stop devolve a sessão até três vezes seguidas no mesmo turno, apertando a instrução a cada volta (decidir pelo padrão mais seguro e reversível, fazer e parar só com o resultado). A regra barata pega pergunta no fim, cardápio e também oferta sem ponto de interrogação ("se quiser, eu já subo", "aguardo seu ok", "é só me falar"). Passado o teto, a sessão para, a quebra vira pendência e o próximo prompt a reanima com "Na resposta anterior você quebrou a ..." e a ordem de gravar o aprendizado antes de seguir. Se o disco não grava a contagem, o teto vale na primeira volta, para nunca virar laço.
 
 Todo hook falha aberto e sai com código 0: erro do plugin nunca derruba a sua sessão. O caso que não casa não usa rede e custa cerca de 50 ms (um processo Node).
 

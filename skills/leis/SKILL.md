@@ -44,8 +44,9 @@ Lei nova só entra com a lista de quem ela pode contrariar e quem vence cada cas
 ## O que nunca fazer
 
 - Declarar a lei "implantada" sem hook, validação e medição.
-- Bloquear antes de observar: todo mecanismo novo começa em modo `observar`, registra, e só vira `bloquear` depois
-  de medido o falso positivo.
+- Negar ação antes de observar: todo fiscal de ação novo começa em modo `observar`, registra, e só vira `bloquear`
+  depois de medido o falso positivo. A autocorreção da resposta final (Stop) não espera: quebra confirmada devolve a
+  sessão ao trabalho no mesmo turno, porque o custo do erro é um turno, não uma ação negada.
 - Deixar o mecanismo travar a sessão: hook falha aberto (erro, rede ou juiz fora do ar passam e registram) e
   bloqueio tem teto.
 - Escrever a mesma regra em dois lugares (T.R.O.C.A.): a regra mora na config, o resto aponta para ela.

@@ -67,7 +67,7 @@ test('a pendência do fiscal da resposta é injetada no prompt seguinte, uma vez
   const { atualizarEstado, lerEstado } = await import('../scripts/estado.mjs');
   atualizarEstado('s1', { pendente: 5 });
   const primeira = await executar(prompt('cria o README'), { config: configCom({}), jev: jevProibido });
-  assert.match(contexto(primeira), /^Na resposta anterior você quebrou a Lei 5 \(S\.I\.M\.\): .*Corrija o padrão\.$/);
+  assert.match(contexto(primeira), /^Na resposta anterior você quebrou a Lei 5 \(S\.I\.M\.\) e parou mesmo depois dos avisos: .*grave na memória.*só então siga\.$/);
   assert.equal(lerEstado('s1').pendente, undefined);
   assert.equal(await executar(prompt('agora o CSS'), { config: configCom({}), jev: jevProibido }), null);
 });
