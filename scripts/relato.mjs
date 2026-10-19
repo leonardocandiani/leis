@@ -6,7 +6,10 @@ import { registrar } from './registro.mjs';
 
 const LIMITE_PROMPT = 4000;
 const CONFIANCA_MINIMA = 0.5;
-const SINAIS = /infring|violou (a )?lei|quebrou (a |as )?lei|(?<![a-z0-9])l[1-9](?![a-z0-9])|\blei \d|\blei de\b|de novo|ja (te )?falei|ja te disse/;
+// Texto já normalizado (sem acento, minúsculo). Forte: só pode ser correção. Fraco: pode ser conversa comum.
+const FORTE = /infring|violou (a )?lei|quebrou (a |as )?lei|ja (te )?(falei|disse)/;
+const SINAIS = new RegExp(`${FORTE.source}|(?<![a-z0-9])l[1-9](?![a-z0-9])|\\blei \\d|\\blei de\\b|de novo`);
+const VERBO_DE_CORRECAO = /infring|viol(ou|aste)|quebr(ou|aste)|de novo|ja (te )?(falei|disse)/;
 
 const mensagem = (lei) => `Você quebrou a ${nomeCompleto(lei)}: ${lei.regra} Corrija o padrão, não só esta resposta.`;
 const mensagemGenerica = 'O dono apontou que você quebrou uma lei de trabalho. Releia as leis do início da sessão, ache qual foi e corrija o padrão, não só esta resposta.';
@@ -15,7 +18,7 @@ async function perguntarAoJev(config, entrada, prompt, deps) {
   const { perguntar, escolha } = await import('./jev.mjs');
   const { montarEstado } = await import('./contexto.mjs');
   const criterios = { nenhuma: 'o dono não aponta quebra de lei, ou não dá para saber qual', ...Object.fromEntries(config.leis.map((l) => [`lei_${l.numero}`, `${l.sigla}: ${l.regra}`])) };
-  const perguntas = { lei: { type: 'choice', instructions: 'O dono acabou de corrigir a sessão. Qual destas leis ele diz que foi quebrada? Escolha "nenhuma" se ele não aponta quebra de lei ou se não dá para saber.', criteria: criterios } };
+  const perguntas = { lei: { type: 'choice', instructions: 'O dono acabou de corrigir a sessão. Qual destas leis ele diz que foi quebrada? Citar uma lei sem dizer que a sessão a quebrou (explicar, aplicar, perguntar sobre ela) é "nenhuma". Escolha "nenhuma" também se não dá para saber.', criteria: criterios } };
   const estado = montarEstado({ entrada, leis: config.leis, extra: { fala_do_dono: prompt } });
   const inicio = Date.now();
   const respostas = await (deps.jev ?? perguntar)(estado, perguntas, { extras: config.jev?.arquivos_chave ?? [] });
@@ -28,12 +31,15 @@ function porCitacao(lei, base) {
   return saidaContexto('UserPromptSubmit', mensagem(lei));
 }
 
+function semJev(base, duracao, aviso, textoNormalizado) {
+  registrar({ ...base, decisao: 'jev_indisponivel', duracao_ms: duracao });
+  if (!FORTE.test(textoNormalizado)) return null;
+  return saidaContexto('UserPromptSubmit', aviso ? `${mensagemGenerica} (${aviso})` : mensagemGenerica);
+}
+
 async function porJev({ config, entrada, prompt, aviso, base, deps }) {
   const { veredito, duracao } = await perguntarAoJev(config, entrada, prompt, deps);
-  if (!veredito) {
-    registrar({ ...base, decisao: 'jev_indisponivel', duracao_ms: duracao });
-    return saidaContexto('UserPromptSubmit', aviso ? `${mensagemGenerica} (${aviso})` : mensagemGenerica);
-  }
+  if (!veredito) return semJev(base, duracao, aviso, normalizar(prompt));
   const lei = config.leis.find((l) => `lei_${l.numero}` === veredito.escolha);
   const aceita = lei && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA;
   registrar({ ...base, lei: aceita ? lei.sigla : undefined, decisao: aceita ? 'jev' : 'sem_lei', prob: veredito.confianca, duracao_ms: duracao });
@@ -44,9 +50,10 @@ export async function executar(entrada, deps = {}) {
   const prompt = String(entrada.prompt ?? '').slice(0, LIMITE_PROMPT);
   const { config, aviso } = deps.config ?? carregarConfig();
   const citadas = leisCitadas(config, prompt);
-  if (citadas.length === 0 && !SINAIS.test(normalizar(prompt))) return null;
+  const texto = normalizar(prompt);
+  if (citadas.length === 0 && !SINAIS.test(texto)) return null;
   const base = { sessao: entrada.session_id, projeto: nomeDoProjeto(entrada), hook: 'relato', natureza: 'relato', trecho: prompt };
-  return citadas.length === 1 ? porCitacao(citadas[0], base) : porJev({ config, entrada, prompt, aviso, base, deps });
+  return citadas.length === 1 && VERBO_DE_CORRECAO.test(texto) ? porCitacao(citadas[0], base) : porJev({ config, entrada, prompt, aviso, base, deps });
 }
 
 await principal(import.meta.url, executar);

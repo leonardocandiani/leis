@@ -1,6 +1,6 @@
 // Entrada e saída comuns dos hooks. Todo hook é fail-open: qualquer erro vira saída vazia e exit 0.
-import { realpathSync } from 'node:fs';
-import { basename } from 'node:path';
+import { existsSync, realpathSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export async function lerEntrada() {
@@ -14,6 +14,9 @@ export async function lerEntrada() {
 }
 
 export const nomeDoProjeto = (entrada) => basename(entrada.cwd || process.env.CLAUDE_PROJECT_DIR || '') || undefined;
+
+// Projeto com mecanismo próprio para a mesma conferência: o plugin sai sem fazer nada para não duplicar.
+export const projetoTem = (...segmentos) => !!process.env.CLAUDE_PROJECT_DIR && existsSync(join(process.env.CLAUDE_PROJECT_DIR, ...segmentos));
 
 export function saidaContexto(evento, texto) {
   return { hookSpecificOutput: { hookEventName: evento, additionalContext: texto } };

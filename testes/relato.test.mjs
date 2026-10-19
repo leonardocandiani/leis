@@ -41,10 +41,21 @@ test('JEV responde nenhuma ou com confiança baixa: não injeta nada', async () 
   assert.deepEqual(registro().map((e) => e.decisao), ['sem_lei', 'sem_lei']);
 });
 
-test('JEV fora do ar registra e injeta o aviso genérico (fail-open)', async () => {
+test('JEV fora do ar registra e, só com sinal forte de correção, injeta o aviso genérico (fail-open)', async () => {
   const saida = await executar(prompt('já te falei'), { config: configCom({}), jev: jevFalso('lei', null) });
   assert.match(contexto(saida), /apontou que você quebrou uma lei/);
-  assert.equal(registro()[0].decisao, 'jev_indisponivel');
+  assert.equal(await executar(prompt('tenta de novo'), { config: configCom({}), jev: jevFalso('lei', null) }), null);
+  assert.equal(await executar(prompt('explica a lei 4'), { config: configCom({}), jev: jevFalso('lei', null) }), null);
+  assert.deepEqual(registro().map((e) => e.decisao), ['jev_indisponivel', 'jev_indisponivel', 'jev_indisponivel']);
+});
+
+test('citar a lei sem dizer que foi quebrada vai ao JEV e não injeta acusação', async () => {
+  for (const texto of ['isso é L1, o usuário viu acontecer', 'explica a lei 4', 'aplica a T.O.P. neste texto', 'a lei 3 serve para o quê?']) {
+    const jev = jevFalso('lei', 'nenhuma');
+    assert.equal(await executar(prompt(texto), { config: configCom({}), jev }), null, texto);
+    assert.equal(jev.chamadas.length, 1, texto);
+  }
+  assert.ok(registro().every((e) => e.decisao === 'sem_lei'));
 });
 
 test('o trecho registrado sai mascarado', async () => {

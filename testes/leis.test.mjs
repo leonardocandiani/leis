@@ -54,7 +54,9 @@ test('leisCitadas acha por sigla, número, apelido e ignora palavra comum', () =
   assert.deepEqual(siglas('você infringiu a J.A. de novo'), ['J.Á.']);
   assert.deepEqual(siglas('isso quebra a L3'), ['T.R.O.C.A.']);
   assert.deepEqual(siglas('lei 5, bro'), ['S.I.M.']);
+  config.leis[0].apelidos = ['P1'];
   assert.deepEqual(siglas('a P1 mandou'), ['T.O.P.']);
+  assert.deepEqual(siglas('a P10 mandou'), []);
   assert.deepEqual(siglas('o top da lista de tarefas, sim, lei de Murphy'), []);
 });
 

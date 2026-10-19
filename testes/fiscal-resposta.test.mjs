@@ -1,9 +1,12 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { executar, regraBarata } from '../scripts/fiscal-resposta.mjs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { isolar, restaurar, configCom, jevFalso, jevProibido, registro } from './ajuda.mjs';
 
-beforeEach(isolar);
+let raiz;
+beforeEach(() => { raiz = isolar(); });
 afterEach(restaurar);
 
 const stop = (texto, extra = {}) => ({ session_id: 's1', cwd: '/x/p', last_assistant_message: texto, ...extra });
@@ -69,4 +72,20 @@ test('JEV diz nenhuma ou confiança baixa: passa e registra passou', async () =>
   assert.equal(await executar(stop('Qual o CNPJ da empresa?'), { config: configCom({}), jev: jevFalso('quebra', 'nenhuma') }), null);
   assert.equal(await executar(stop('Quer que eu siga?'), { config: configCom({}), jev: jevFalso('quebra', 'top', 0.3) }), null);
   assert.deepEqual(registro().map((e) => e.decisao), ['passou', 'passou']);
+});
+
+test('stop_hook_active é o teto mesmo quando o estado em disco não grava', async () => {
+  const arquivo = join(raiz, 'arquivo-comum');
+  writeFileSync(arquivo, 'x');
+  process.env.LEIS_HOME = join(arquivo, 'impossivel');
+  const config = configCom({ 1: 'bloquear' });
+  const saida = await executar(stop('Posso seguir?', { stop_hook_active: true }), { config, jev: jevFalso('quebra', 'top') });
+  assert.equal(saida.decision, undefined);
+});
+
+test('projeto com parada própria: sai sem fazer nada', async () => {
+  mkdirSync(join(raiz, 'p', 'scripts', 'central', 'hooks'), { recursive: true });
+  writeFileSync(join(raiz, 'p', 'scripts', 'central', 'hooks', 'parada.ts'), '');
+  process.env.CLAUDE_PROJECT_DIR = join(raiz, 'p');
+  assert.equal(await executar(stop('Posso seguir?'), { config: configCom({ 1: 'bloquear' }), jev: jevProibido }), null);
 });

@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 // PreToolUse (Bash e AskUserQuestion): regras determinísticas, sem rede e sem ler arquivo grande.
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { nomeDoProjeto, principal, saidaNegar } from './entrada.mjs';
+import { nomeDoProjeto, principal, projetoTem, saidaNegar } from './entrada.mjs';
 import { carregarConfig, modoDaLei, nomeCompleto, leiPorNumero } from './leis.mjs';
 import { registrar } from './registro.mjs';
 
@@ -26,10 +24,8 @@ export function classificar(entrada) {
   return !emSegundoPlano && LACO_COM_SLEEP.test(comando) ? 'laco_com_sleep' : null;
 }
 
-const temPortaoProprio = () => !!process.env.CLAUDE_PROJECT_DIR && existsSync(join(process.env.CLAUDE_PROJECT_DIR, 'scripts', 'central', 'hooks', 'portao.ts'));
-
 export function executar(entrada, deps = {}) {
-  if (temPortaoProprio()) return null;
+  if (projetoTem('scripts', 'central', 'hooks', 'portao.ts')) return null;
   const regra = classificar(entrada);
   if (!regra) return null;
   const { config } = deps.config ?? carregarConfig();

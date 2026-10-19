@@ -2,7 +2,7 @@
 // Stop: confere a última resposta da sessão contra T.O.P. e S.I.M. Regra barata primeiro, JEV só quando ela dispara.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { nomeDoProjeto, principal } from './entrada.mjs';
+import { nomeDoProjeto, principal, projetoTem } from './entrada.mjs';
 import { carregarConfig, casaDoUsuario, leiPorNumero, modoDaLei, nomeCompleto } from './leis.mjs';
 import { registrar } from './registro.mjs';
 
@@ -35,7 +35,7 @@ function gravarEstado(sessao, estado) {
     mkdirSync(join(casaDoUsuario(), 'estado'), { recursive: true });
     writeFileSync(arquivoDeEstado(sessao), JSON.stringify(estado));
   } catch {
-    // sem estado, o teto de bloqueio fica conservador (nunca bloqueia)
+    // segunda camada do teto; a primeira é stop_hook_active, que não depende de escrita em disco
   }
 }
 
@@ -63,14 +63,14 @@ async function julgar(config, entrada, texto, sinal, deps) {
 
 function decidir({ config, lei, estado, entrada }) {
   const bloquear = modoDaLei(config, lei.numero) === 'bloquear';
-  const novoTurno = entrada.stop_hook_active === false;
-  const usado = novoTurno ? 0 : estado.bloqueios_seguidos;
+  const usado = entrada.stop_hook_active === true ? 1 : entrada.stop_hook_active === false ? 0 : estado.bloqueios_seguidos;
   if (!bloquear) return { decisao: 'observada', bloqueios: 0 };
   if (usado >= 1) return { decisao: 'teto', bloqueios: usado };
   return { decisao: 'bloqueada', bloqueios: usado + 1 };
 }
 
 export async function executar(entrada, deps = {}) {
+  if (projetoTem('scripts', 'central', 'hooks', 'parada.ts')) return null;
   const sessao = entrada.session_id ?? 'sem-sessao';
   const texto = entrada.last_assistant_message
     ?? (entrada.transcript_path ? (await import('./contexto.mjs')).ultimaRespostaDaSessao(entrada.transcript_path) : '');
