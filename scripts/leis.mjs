@@ -30,8 +30,24 @@ function errosDaLei(lei, indice, numerosVistos) {
   const erros = [erroDoNumero(lei, onde, numerosVistos)].filter(Boolean);
   for (const campo of CAMPOS_TEXTO) if (!ehTexto(lei[campo])) erros.push(`${onde}.${campo} ausente ou vazio`);
   if (ehTexto(lei.sigla) && !SIGLA.test(lei.sigla)) erros.push(`${onde}.sigla "${lei.sigla}" deve ser maiúsculas separadas por ponto, como T.O.P.`);
+  if (lei.papel !== undefined && !ehTexto(lei.papel)) erros.push(`${onde}.papel deve ser texto não vazio`);
   if (!ehListaDeTextos(lei.apelidos)) erros.push(`${onde}.apelidos deve ser lista de textos`);
   return erros;
+}
+
+function errosDePapeis(leis) {
+  const vistos = new Set();
+  return leis.flatMap((l) => {
+    if (!ehTexto(l?.papel)) return [];
+    if (!vistos.has(l.papel)) return (vistos.add(l.papel), []);
+    return [`papel "${l.papel}" repetido`];
+  });
+}
+
+function errosDoJev(jev) {
+  if (jev === undefined) return [];
+  if (!jev || typeof jev !== 'object' || Array.isArray(jev)) return ['jev deve ser objeto'];
+  return jev.arquivos_chave === undefined || ehListaDeTextos(jev.arquivos_chave) ? [] : ['jev.arquivos_chave deve ser lista de textos'];
 }
 
 function errosDosModos(modos, numeros) {
@@ -54,7 +70,7 @@ export function validarEsquema(c) {
   c.leis.forEach((lei, i) => erros.push(...errosDaLei(lei, i, numeros)));
   if (!ehListaDeTextos(c.equilibrio)) erros.push('equilibrio deve ser lista de textos');
   if (!ehListaDeTextos(c.vedacoes)) erros.push('vedacoes deve ser lista de textos');
-  erros.push(...errosDosModos(c.modos, numeros));
+  erros.push(...errosDePapeis(c.leis), ...errosDoJev(c.jev), ...errosDosModos(c.modos, numeros));
   return erros;
 }
 
@@ -78,6 +94,9 @@ export function carregarConfig() {
 }
 
 export const leiPorNumero = (config, numero) => config.leis.find((l) => l.numero === numero) ?? null;
+// Papéis conhecidos dos fiscais; lei com outro papel (ou sem) só é coberta por relato e auditoria.
+export const PAPEIS = ['pronto', 'antes', 'troca', 'leitura', 'sim', 'aval'];
+export const leiPorPapel = (config, papel) => config.leis.find((l) => l.papel === papel) ?? null;
 export const siglaDe = (config, numero) => leiPorNumero(config, numero)?.sigla ?? `L${numero}`;
 export const modoDaLei = (config, numero) => (config.modos?.[String(numero)] === 'bloquear' ? 'bloquear' : 'observar');
 

@@ -62,3 +62,19 @@ test('o trecho registrado sai mascarado', async () => {
   await executar(prompt('quebrou a L1, token=abcdef1234567890 de novo'), { config: configCom({}), jev: jevProibido });
   assert.doesNotMatch(registro()[0].trecho, /abcdef1234567890/);
 });
+
+test('a pendência do fiscal da resposta é injetada no prompt seguinte, uma vez só', async () => {
+  const { atualizarEstado, lerEstado } = await import('../scripts/estado.mjs');
+  atualizarEstado('s1', { pendente: 5 });
+  const primeira = await executar(prompt('cria o README'), { config: configCom({}), jev: jevProibido });
+  assert.match(contexto(primeira), /^Na resposta anterior você quebrou a Lei 5 \(S\.I\.M\.\): .*Corrija o padrão\.$/);
+  assert.equal(lerEstado('s1').pendente, undefined);
+  assert.equal(await executar(prompt('agora o CSS'), { config: configCom({}), jev: jevProibido }), null);
+});
+
+test('pendência e correção do dono no mesmo prompt saem juntas', async () => {
+  const { atualizarEstado } = await import('../scripts/estado.mjs');
+  atualizarEstado('s1', { pendente: 1 });
+  const texto = contexto(await executar(prompt('você infringiu a Lei 2'), { config: configCom({}), jev: jevProibido }));
+  assert.match(texto, /Lei 1 \(T\.O\.P\.\)[\s\S]*\nVocê quebrou a Lei 2/);
+});

@@ -57,7 +57,14 @@ telefone) e limitado a 200 caracteres. Sem rede, sem serviço, sem banco.
 
 **Observar no Stop é `systemMessage`, não `additionalContext`.** A documentação dos hooks diz que `additionalContext`
 no Stop continua a conversa, o que seria bloqueio disfarçado. Em modo observar o `fiscal-resposta` devolve só
-`systemMessage` (o dono vê o aviso) e registra. Em modo bloquear devolve `decision: "block"` com a correção.
+`systemMessage` (o dono vê o aviso) e registra. Em modo bloquear devolve `decision: "block"` com a correção. Para o modelo também aprender em observar, a quebra
+vira `pendente` em `estado/<sessao>.json` e o `relato` a injeta no prompt seguinte, uma vez.
+
+**Papel, não número.** Os fiscais acham a lei pelo campo `papel`, então renumerar ou reordenar o `leis.json` não
+quebra nada. Lei sem papel conhecido não é fiscalizada por hook.
+
+**Fonte única.** `~/.claude/leis/leis.json` é a única fonte; a rule global `rules/leis.md` é gerada dele por
+`scripts/gerar-rule.mjs` (T.R.O.C.A.: nunca duas versões vivas).
 
 **Zero dependência.** Node puro, para rodar em qualquer máquina que tenha o Claude Code.
 

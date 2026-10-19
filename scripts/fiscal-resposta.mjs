@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 // Stop: confere a última resposta da sessão contra T.O.P. e S.I.M. Regra barata primeiro, JEV só quando ela dispara.
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { nomeDoProjeto, principal, projetoTem } from './entrada.mjs';
-import { carregarConfig, casaDoUsuario, leiPorNumero, modoDaLei, nomeCompleto } from './leis.mjs';
+import { atualizarEstado, lerEstado } from './estado.mjs';
+import { carregarConfig, leiPorPapel, modoDaLei, nomeCompleto } from './leis.mjs';
 import { registrar } from './registro.mjs';
 
-const LEI_TOP = 1;
-const LEI_SIM = 5;
+const PAPEL_DA_ESCOLHA = { top: 'pronto', sim: 'sim' };
 const CONFIANCA_MINIMA = 0.6;
 const CARDAPIO = /\bquer que eu\b|\bposso (seguir|continuar|prosseguir|avançar)\b|\bdeseja que eu\b|\bop[cç][aã]o\s*[a-d1-4]\b|\bprefere\s+(a|b|c|1|2)\b|\bqual (você )?prefere\b|\bme diga qual\b/i;
 
@@ -20,42 +18,22 @@ export function regraBarata(texto) {
   return null;
 }
 
-const arquivoDeEstado = (sessao) => join(casaDoUsuario(), 'estado', `${String(sessao).replace(/[^\w-]/g, '_')}.json`);
-
-function lerEstado(sessao) {
-  try {
-    return JSON.parse(readFileSync(arquivoDeEstado(sessao), 'utf8'));
-  } catch {
-    return { bloqueios_seguidos: 0 };
-  }
-}
-
-function gravarEstado(sessao, estado) {
-  try {
-    mkdirSync(join(casaDoUsuario(), 'estado'), { recursive: true });
-    writeFileSync(arquivoDeEstado(sessao), JSON.stringify(estado));
-  } catch {
-    // segunda camada do teto; a primeira é stop_hook_active, que não depende de escrita em disco
-  }
-}
-
 function passar(evento) {
   registrar(evento);
   return null;
 }
 
+const leisDoFiscal = (config) => ({ top: leiPorPapel(config, PAPEL_DA_ESCOLHA.top), sim: leiPorPapel(config, PAPEL_DA_ESCOLHA.sim) });
+
 async function julgar(config, entrada, texto, sinal, deps) {
   const { perguntar, escolha } = await import('./jev.mjs');
   const { montarEstado } = await import('./contexto.mjs');
-  const top = leiPorNumero(config, LEI_TOP);
-  const sim = leiPorNumero(config, LEI_SIM);
-  const criterios = {
-    nenhuma: 'a resposta entrega o resultado ou faz uma pergunta que só o dono pode responder',
-    top: `${top.sigla}: ${top.regra} Quebra quando a resposta termina pedindo decisão ou escolha que a sessão resolvia sozinha, ou entrega cardápio em vez de executar.`,
-    sim: `${sim.sigla}: ${sim.regra} Quebra quando a resposta repete uma pergunta que o dono já respondeu antes na conversa.`,
-  };
+  const { top, sim } = leisDoFiscal(config);
+  const criterios = { nenhuma: 'a resposta entrega o resultado ou faz uma pergunta que só o dono pode responder' };
+  if (top) criterios.top = `${top.sigla}: ${top.regra} Quebra quando a resposta termina pedindo decisão ou escolha que a sessão resolvia sozinha, ou entrega cardápio em vez de executar.`;
+  if (sim) criterios.sim = `${sim.sigla}: ${sim.regra} Quebra quando a resposta repete uma pergunta que o dono já respondeu antes na conversa.`;
   const perguntas = { quebra: { type: 'choice', instructions: 'Confira a última resposta da sessão (campo resposta_final) contra as leis. Escolha "nenhuma" na dúvida.', criteria: criterios } };
-  const estado = montarEstado({ entrada, leis: [top, sim], extra: { resposta_final: texto.slice(-1500), sinal_da_regra_barata: sinal } });
+  const estado = montarEstado({ entrada, leis: [top, sim].filter(Boolean), extra: { resposta_final: texto.slice(-1500), sinal_da_regra_barata: sinal } });
   const inicio = Date.now();
   const respostas = await (deps.jev ?? perguntar)(estado, perguntas, { extras: config.jev?.arquivos_chave ?? [] });
   return { veredito: escolha(respostas, 'quebra', criterios), duracao: Date.now() - inicio };
@@ -78,19 +56,20 @@ export async function executar(entrada, deps = {}) {
   if (!sinal) return null;
 
   const { config } = deps.config ?? carregarConfig();
+  const { top, sim } = leisDoFiscal(config);
+  if (!top && !sim) return null;
   const base = { sessao, projeto: nomeDoProjeto(entrada), hook: 'fiscal-resposta', natureza: 'acao', trecho: texto.slice(-300) };
   const { veredito, duracao } = await julgar(config, entrada, texto, sinal, deps);
   if (!veredito) return passar({ ...base, decisao: 'jev_indisponivel', duracao_ms: duracao });
 
-  const numero = { top: LEI_TOP, sim: LEI_SIM }[veredito.escolha];
-  const quebrou = numero && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA;
+  const lei = { top, sim }[veredito.escolha];
+  const quebrou = lei && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA;
   if (!quebrou) {
-    gravarEstado(sessao, { bloqueios_seguidos: 0 });
+    atualizarEstado(sessao, { bloqueios_seguidos: 0 });
     return passar({ ...base, decisao: 'passou', prob: veredito.confianca, duracao_ms: duracao });
   }
-  const lei = leiPorNumero(config, numero);
   const { decisao, bloqueios } = decidir({ config, lei, estado: lerEstado(sessao), entrada });
-  gravarEstado(sessao, { bloqueios_seguidos: bloqueios });
+  atualizarEstado(sessao, { bloqueios_seguidos: bloqueios, pendente: decisao === 'bloqueada' ? null : lei.numero });
   registrar({ ...base, lei: lei.sigla, decisao, prob: veredito.confianca, duracao_ms: duracao });
   const aviso = `Você quebrou a ${nomeCompleto(lei)} na última resposta: ${lei.regra} Teste: ${lei.teste} Corrija: ${lei.correcao}`;
   return decisao === 'bloqueada' ? { decision: 'block', reason: aviso } : { systemMessage: `[leis] ${aviso}` };

@@ -61,9 +61,13 @@ Lei nova só entra com a lista de quem ela pode contrariar e quem vence cada cas
 | UserPromptSubmit (`relato`) | quando o dono corrige citando lei, acha qual foi quebrada, registra e manda corrigir o padrão |
 | Stop (`fiscal-resposta`) | confere a última resposta contra T.O.P. e S.I.M.: regra barata primeiro, JEV só se ela dispara |
 | PreToolUse (`fiscal-acao`) | pergunta ao dono pelo terminal, laço com sleep em primeiro plano, segredo literal no comando |
+| `gerar-rule.mjs` | gera a rule global `rules/leis.md` do `leis.json`, a fonte única |
 | `registro.jsonl` | uma linha por evento, com o trecho mascarado |
 | `/leis:leis-validar` e `/leis:leis-medir` | prova de implantação e medição |
 | `/leis:leis-auditar` e `auditor-leis` | caça quebras nos transcripts, inclusive as que ninguém apontou |
+
+Cada lei pode ter um `papel` (`pronto`, `antes`, `troca`, `leitura`, `sim`, `aval`); os fiscais procuram a lei por ele e
+lei sem papel só é coberta por relato e auditoria.
 
 O JEV é o juiz que decide casos de interpretação; ele nunca escreve texto, só escolhe entre opções dadas.
 Fora do ar, o hook passa e registra.

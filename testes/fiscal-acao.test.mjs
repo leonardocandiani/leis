@@ -71,3 +71,19 @@ test('projeto com portão próprio: sai sem fazer nada', () => {
   assert.equal(saida, null);
   assert.equal(registro().length, 0);
 });
+
+test('os fiscais acham a lei pelo papel, não pelo número (config renumerada)', () => {
+  const c = configCom({});
+  c.config.leis.reverse().forEach((l, i) => { l.numero = i + 1; });
+  c.config.modos = { 1: 'bloquear', 2: 'bloquear', 3: 'bloquear', 4: 'bloquear', 5: 'bloquear', 6: 'bloquear' };
+  const saida = executar({ tool_name: 'AskUserQuestion', tool_input: {} }, { config: c });
+  assert.match(saida.hookSpecificOutput.permissionDecisionReason, /S\.I\.M\./);
+  assert.equal(registro()[0].lei, 'S.I.M.');
+});
+
+test('lei sem o papel do fiscal: nada é fiscalizado por hook', () => {
+  const c = configCom({ 5: 'bloquear' });
+  for (const l of c.config.leis) delete l.papel;
+  assert.equal(executar({ tool_name: 'AskUserQuestion', tool_input: {} }, { config: c }), null);
+  assert.equal(registro().length, 0);
+});

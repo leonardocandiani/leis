@@ -74,3 +74,16 @@ test('resumoSessao traz as seis siglas e o aviso', () => {
   for (const l of config.leis) assert.ok(r.includes(l.sigla));
   assert.ok(r.endsWith('[aviso x]'));
 });
+
+test('o esquema valida papel e jev.arquivos_chave', () => {
+  const c = modelo();
+  c.leis[1].papel = c.leis[0].papel;
+  c.jev = { arquivos_chave: [1] };
+  const erros = validarEsquema(c).join('\n');
+  assert.match(erros, /papel "pronto" repetido/);
+  assert.match(erros, /jev\.arquivos_chave/);
+  const sem = modelo();
+  delete sem.leis[2].papel;
+  delete sem.jev;
+  assert.deepEqual(validarEsquema(sem), []);
+});

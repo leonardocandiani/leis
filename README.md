@@ -25,11 +25,13 @@ claude plugin install leis@leis
 ```
 
 Depois, numa sessão: `/leis:leis-implantar <seu nome>` cria `~/.claude/leis/leis.json` a partir do modelo (ou de
-um md com as suas leis) e põe o ponteiro no seu `CLAUDE.md`. Sem `leis.json`, o plugin usa o modelo e avisa.
+um md com as suas leis) gera `~/.claude/rules/leis.md` a partir dele (o json é a fonte única; edite o json e rode
+`node scripts/gerar-rule.mjs`) e põe o ponteiro no seu `CLAUDE.md`. Sem `leis.json`, o plugin usa o modelo e avisa.
 
 O juiz das conferências é o JEV (TypeSafe). Ele precisa de uma chave: `TYPESAFE_API_KEY` ou
 `AI_GATEWAY_API_KEY`, no ambiente, em `~/.claude/settings.local.json` (campo `env`) ou numa linha `CHAVE=valor` em
-`~/.config/jev/chaves.env`. Outros arquivos de chaves entram em `jev.arquivos_chave` no `leis.json`. Sem chave o
+`~/.config/jev/chaves.env`. Outros arquivos de chaves entram em `jev.arquivos_chave` no `leis.json` (opcional;
+o `/leis-implantar` grava o campo sozinho quando acha a chave num caminho conhecido fora da busca padrão). Sem chave o
 plugin continua funcionando: as conferências por regra e a citação explícita de lei seguem, e o que dependia do
 JEV passa e registra.
 
@@ -45,7 +47,12 @@ JEV passa e registra.
 Todo hook falha aberto e sai com código 0. O caso que não casa não usa rede e custa cerca de 50 ms (um processo
 Node). O padrão é o modo `observar`: o hook registra e avisa, não nega. Para uma lei passar a bloquear, ponha
 `"bloquear"` em `modos` no seu `leis.json` (a chave é o número da lei): `{"modos": {"1": "bloquear"}}`. O bloqueio do
-Stop tem teto de um seguido por turno.
+Stop tem teto de um seguido por turno. Em `observar`, a quebra que o `fiscal-resposta` viu vira pendência da sessão
+e o próximo prompt injeta "Na resposta anterior você quebrou a ...", uma vez, para o modelo aprender.
+
+Cada lei do modelo tem um `papel` (`pronto`, `antes`, `troca`, `leitura`, `sim`, `aval`). Os fiscais procuram a lei
+pelo papel, não pelo número: renumerar não quebra nada. Lei sem papel conhecido não é fiscalizada por hook, só pelo
+`relato` e pela auditoria.
 
 ## Comandos
 

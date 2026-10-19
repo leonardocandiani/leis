@@ -89,3 +89,26 @@ test('projeto com parada própria: sai sem fazer nada', async () => {
   process.env.CLAUDE_PROJECT_DIR = join(raiz, 'p');
   assert.equal(await executar(stop('Posso seguir?'), { config: configCom({ 1: 'bloquear' }), jev: jevProibido }), null);
 });
+
+test('config renumerada: o fiscal da resposta acha T.O.P. pelo papel', async () => {
+  const c = configCom({});
+  c.config.leis.reverse().forEach((l, i) => { l.numero = i + 1; });
+  c.config.modos = { 6: 'bloquear' };
+  const saida = await executar(stop('Posso seguir?'), { config: c, jev: jevFalso('quebra', 'top') });
+  assert.equal(saida.decision, 'block');
+  assert.match(saida.reason, /T\.O\.P\./);
+});
+
+test('sem lei de papel pronto ou sim: não fiscaliza e não chama o JEV', async () => {
+  const c = configCom({});
+  for (const l of c.config.leis) delete l.papel;
+  assert.equal(await executar(stop('Posso seguir?'), { config: c, jev: jevProibido }), null);
+});
+
+test('modo observar grava a pendência; bloqueio não', async () => {
+  const { lerEstado } = await import('../scripts/estado.mjs');
+  await executar(stop('Posso seguir?', { session_id: 'p1' }), { config: configCom({}), jev: jevFalso('quebra', 'top') });
+  assert.equal(lerEstado('p1').pendente, 1);
+  await executar(stop('Posso seguir?', { session_id: 'p2' }), { config: configCom({ 1: 'bloquear' }), jev: jevFalso('quebra', 'top') });
+  assert.equal(lerEstado('p2').pendente, undefined);
+});

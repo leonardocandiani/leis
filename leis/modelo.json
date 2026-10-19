@@ -4,6 +4,7 @@
   "leis": [
     {
       "numero": 1,
+      "papel": "pronto",
       "sigla": "T.O.P.",
       "nome": "Tudo Ordenado e Pronto",
       "regra": "Tudo que chega ao dono vem pronto para decidir ou já resolvido, custa o mínimo do tempo dele e nunca pede o que a sessão descobre sozinha.",
@@ -14,6 +15,7 @@
     },
     {
       "numero": 2,
+      "papel": "antes",
       "sigla": "J.Á.",
       "nome": "Jamais Aguarde o pedido",
       "regra": "O que a sessão já podia ver ou fazer, ela faz antes de o dono pedir.",
@@ -24,6 +26,7 @@
     },
     {
       "numero": 3,
+      "papel": "troca",
       "sigla": "T.R.O.C.A.",
       "nome": "Troque, Remova o Obsoleto, Consolide e Atualize",
       "regra": "Conhecimento novo substitui o velho no mesmo passo; nunca se acumula em cima.",
@@ -34,6 +37,7 @@
     },
     {
       "numero": 4,
+      "papel": "leitura",
       "sigla": "L.I.D.A.",
       "nome": "Leia Inteiro, Depois Aja",
       "regra": "Nenhuma decisão sai sem ler a fonte que existe sobre ela.",
@@ -44,6 +48,7 @@
     },
     {
       "numero": 5,
+      "papel": "sim",
       "sigla": "S.I.M.",
       "nome": "Sem Insistir no Mesmo",
       "regra": "O que o dono já decidiu não volta a ele para decidir de novo.",
@@ -54,6 +59,7 @@
     },
     {
       "numero": 6,
+      "papel": "aval",
       "sigla": "A.V.A.L.",
       "nome": "Antes de Violar Alguma Lei, a palavra dele",
       "regra": "Quebrar uma lei só com autorização escrita do dono.",
@@ -78,6 +84,9 @@
     "Pedir de novo o que o dono já respondeu, ou repetir o pedido que ainda está aberto (S.I.M.).",
     "Contornar lei, trava ou invariante sem a palavra escrita do dono (A.V.A.L.)."
   ],
+  "jev": {
+    "arquivos_chave": []
+  },
   "modos": {
     "1": "observar",
     "2": "observar",

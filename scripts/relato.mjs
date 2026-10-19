@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // UserPromptSubmit: quando o dono corrige citando lei, descobre qual foi quebrada, registra e injeta a correção.
 import { saidaContexto, nomeDoProjeto, principal } from './entrada.mjs';
-import { carregarConfig, leisCitadas, nomeCompleto, normalizar } from './leis.mjs';
+import { atualizarEstado, lerEstado } from './estado.mjs';
+import { carregarConfig, leiPorNumero, leisCitadas, nomeCompleto, normalizar } from './leis.mjs';
 import { registrar } from './registro.mjs';
 
 const LIMITE_PROMPT = 4000;
@@ -46,14 +47,30 @@ async function porJev({ config, entrada, prompt, aviso, base, deps }) {
   return aceita ? saidaContexto('UserPromptSubmit', mensagem(lei)) : null;
 }
 
-export async function executar(entrada, deps = {}) {
+async function analisar(entrada, config, aviso, deps) {
   const prompt = String(entrada.prompt ?? '').slice(0, LIMITE_PROMPT);
-  const { config, aviso } = deps.config ?? carregarConfig();
   const citadas = leisCitadas(config, prompt);
   const texto = normalizar(prompt);
   if (citadas.length === 0 && !SINAIS.test(texto)) return null;
   const base = { sessao: entrada.session_id, projeto: nomeDoProjeto(entrada), hook: 'relato', natureza: 'relato', trecho: prompt };
   return citadas.length === 1 && VERBO_DE_CORRECAO.test(texto) ? porCitacao(citadas[0], base) : porJev({ config, entrada, prompt, aviso, base, deps });
+}
+
+// A quebra que o fiscal da resposta só observou chega ao modelo aqui, uma vez.
+function consumirPendencia(config, sessao) {
+  const { pendente } = lerEstado(sessao);
+  if (pendente === undefined) return null;
+  atualizarEstado(sessao, { pendente: null });
+  const lei = leiPorNumero(config, pendente);
+  return lei ? `Na resposta anterior você quebrou a ${nomeCompleto(lei)}: ${lei.regra} Corrija o padrão.` : null;
+}
+
+export async function executar(entrada, deps = {}) {
+  const { config, aviso } = deps.config ?? carregarConfig();
+  const nota = consumirPendencia(config, entrada.session_id ?? 'sem-sessao');
+  const saida = await analisar(entrada, config, aviso, deps);
+  const corpo = [nota, saida?.hookSpecificOutput.additionalContext].filter(Boolean).join('\n');
+  return corpo ? saidaContexto('UserPromptSubmit', corpo) : null;
 }
 
 await principal(import.meta.url, executar);
