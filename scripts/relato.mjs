@@ -62,7 +62,7 @@ function consumirPendencia(config, sessao) {
   if (pendente === undefined) return null;
   atualizarEstado(sessao, { pendente: null });
   const lei = leiPorNumero(config, pendente);
-  return lei ? `Na resposta anterior você quebrou a ${nomeCompleto(lei)}: ${lei.regra} Corrija o padrão.` : null;
+  return lei ? `Na resposta anterior você quebrou a ${nomeCompleto(lei)} e parou mesmo depois dos avisos: ${lei.regra} Antes de responder a esta mensagem, grave na memória ou nas regras do projeto o que você fará diferente (substitua a regra velha, não acumule) e só então siga.` : null;
 }
 
 export async function executar(entrada, deps = {}) {
