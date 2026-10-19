@@ -1,0 +1,14 @@
+{
+  "name": "leis",
+  "owner": {
+    "name": "Leonardo Candiani"
+  },
+  "description": "Plugin que faz as leis de trabalho do dono valerem no Claude Code, com mecanismo, validação e medição.",
+  "plugins": [
+    {
+      "name": "leis",
+      "source": "./",
+      "description": "Leis com regra, hooks, validação, auditoria e medição."
+    }
+  ]
+}

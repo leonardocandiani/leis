@@ -1,0 +1,10 @@
+{
+  "name": "leis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plugin do Claude Code que faz as leis de trabalho valerem de verdade.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"testes/*.test.mjs\""
+  }
+}
