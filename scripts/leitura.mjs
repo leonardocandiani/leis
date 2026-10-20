@@ -2,7 +2,8 @@
 import { lerFinal, textoDe } from './contexto.mjs';
 
 const LIMITE_LEITURA = 1024 * 1024;
-const LEITORES_DE_SHELL = /\b(?:cat|head|tail|sed|less|more|bat|grep|rg|awk)\b/;
+const LEITOR_NO_INICIO = /^(?:sudo\s+|\w+=\S*\s+)*(?:cat|head|tail|sed|grep|rg|less|awk|wc)\b/;
+const SEPARADORES_DE_SHELL = /\|\|?|&&|;/;
 
 export const escapar = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -34,9 +35,15 @@ function eventosDoTranscript(caminho) {
   });
 }
 
-const usosDe = (eventos) => eventos.flatMap((e) => (e.type === 'assistant' && Array.isArray(e.message?.content)
-  ? e.message.content.filter((b) => b?.type === 'tool_use').map((b) => ({ ts: Date.parse(e.timestamp), nome: b.name, entrada: b.input ?? {} }))
-  : []));
+// Só conta o uso que tem tool_result do mesmo id sem is_error: leitura negada, falha ou ainda em curso não prova nada.
+function usosDe(eventos) {
+  const resultados = new Map(eventos.flatMap((e) => (e.type === 'user' && Array.isArray(e.message?.content)
+    ? e.message.content.filter((b) => b?.type === 'tool_result' && b.tool_use_id).map((b) => [b.tool_use_id, b.is_error === true])
+    : [])));
+  return eventos.flatMap((e) => (e.type === 'assistant' && Array.isArray(e.message?.content)
+    ? e.message.content.filter((b) => b?.type === 'tool_use' && resultados.get(b.id) === false).map((b) => ({ ts: Date.parse(e.timestamp), nome: b.name, entrada: b.input ?? {} }))
+    : []));
+}
 
 const ehPromptDoDono = (e) => e.type === 'user' && !e.isMeta && textoDe(e.message?.content).trim() !== '';
 
@@ -67,7 +74,7 @@ export function leuFonte(usos, { fonte, tipo }, leitores = []) {
     if (tipo === 'arquivo' && leuArquivo(u, fonte)) return true;
     if (u.nome !== 'Bash') return false;
     const comando = String(u.entrada.command ?? '');
-    if (tipo === 'arquivo' && comando.includes(fonte) && LEITORES_DE_SHELL.test(comando)) return true;
+    if (tipo === 'arquivo' && comando.split(SEPARADORES_DE_SHELL).some((seg) => LEITOR_NO_INICIO.test(seg.trim()) && seg.includes(fonte))) return true;
     return leitores.some((p) => leitorRegex(p, fonte)?.test(comando));
   });
 }

@@ -27,12 +27,19 @@ function cfg(modo, leitura = {}) {
 }
 
 const quando = (minutosAtras) => new Date(Date.now() - minutosAtras * 60000).toISOString();
-const uso = (nome, input, minutosAtras = 1) => ({ type: 'assistant', timestamp: quando(minutosAtras), message: { content: [{ type: 'tool_use', name: nome, input }] } });
+let contadorDeUso = 0;
+// `res` descreve o tool_result que o transcript() grava logo depois: 'ok' (padrão), 'erro' (is_error) ou 'nenhum' (leitura em curso).
+const uso = (nome, input, minutosAtras = 1, res = 'ok') => ({ type: 'assistant', timestamp: quando(minutosAtras), _res: res, message: { content: [{ type: 'tool_use', id: `tu${++contadorDeUso}`, name: nome, input }] } });
 const prompt = (minutosAtras = 2) => ({ type: 'user', uuid: 'p1', timestamp: quando(minutosAtras), message: { content: 'faça isso' } });
 
 function transcript(...linhas) {
   const caminho = join(raiz, `t-${Math.random().toString(36).slice(2)}.jsonl`);
-  writeFileSync(caminho, `${linhas.map((l) => JSON.stringify(l)).join('\n')}\n`);
+  const eventos = linhas.flatMap(({ _res, ...evento }) => {
+    if (!_res || _res === 'nenhum') return [evento];
+    const resultado = { type: 'tool_result', tool_use_id: evento.message.content[0].id, ...(_res === 'erro' ? { is_error: true } : {}) };
+    return [evento, { type: 'user', timestamp: evento.timestamp, message: { content: [resultado] } }];
+  });
+  writeFileSync(caminho, `${eventos.map((l) => JSON.stringify(l)).join('\n')}\n`);
   return caminho;
 }
 
@@ -300,4 +307,69 @@ test('com mais candidatas que vagas, sobem as linhas com mais termos em comum', 
   const vistas = jev.chamadas[0].estado.evidencias;
   assert.equal(vistas.length, 12);
   assert.equal(vistas[0], alvo);
+});
+
+test('evidências chegam mascaradas ao JEV', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('oferta de 15h para Fulano, contato dev@exemplo.com token=abcdef123456')] });
+  const jev = jevFalso('achado', 'nenhum', 0.9);
+  await executar(bash(ENVIO), { config: c, jev });
+  const [linha] = jev.chamadas[0].estado.evidencias;
+  assert.doesNotMatch(linha, /dev@exemplo|abcdef123456/);
+  assert.match(linha, /\[email\]/);
+});
+
+test('Read negado ou ainda sem resultado não prova leitura; Read com resultado ok prova', async () => {
+  const arq = arquivoReal();
+  const ler = (res) => transcript(prompt(), uso('Read', { file_path: arq }, 1, res));
+  const roda = (res) => executar(enviar(`veja ${arq}`, { transcript_path: ler(res) }), { config: cfg('bloquear') });
+  assert.ok(negou(await roda('erro')));
+  assert.ok(negou(await roda('nenhum')));
+  assert.equal(await roda('ok'), null);
+});
+
+test('eco: só a linha igual à busca ou chave: busca cai; linha com a busca no meio continua candidata', () => {
+  const vars = { termos: ['15h', 'Beltrano'], destino: 'Fulano' };
+  const saida = ['busca: "15h Beltrano"', '"15h Beltrano"', '15h Beltrano', '15h Beltrano confirmou a reunião'].join('\n');
+  assert.deepEqual(linhasCandidatas(saida, vars, ['15h Beltrano']), ['15h Beltrano confirmou a reunião']);
+});
+
+test('config leitura: leitores ou saidas que não são lista devolvem erro de esquema, sem exceção', () => {
+  const com = (leitura) => { const c = configCom({}).config; c.leitura = leitura; return validarEsquema(c); };
+  assert.match(com({ leitores: 'x' })[0], /leitura\.leitores deve ser lista de textos/);
+  assert.match(com({ saidas: 'x' })[0], /leitura\.saidas deve ser lista de textos/);
+  assert.match(com({ leitores: { a: 1 } })[0], /leitura\.leitores deve ser lista de textos/);
+});
+
+test('Bash só prova leitura quando o caminho é argumento do leitor no mesmo segmento', async () => {
+  const arq = arquivoReal('plano.md');
+  const prova = (comando) => executar(enviar(`veja ${arq}`, { transcript_path: transcript(prompt(), uso('Bash', { command: comando })) }), { config: cfg('bloquear') });
+  assert.ok(negou(await prova(`ls ${arq} | grep resultado`)));
+  assert.equal(await prova(`grep -n prazo ${arq}`), null);
+  assert.equal(await prova(`cat '${arq}' | head`), null);
+  assert.equal(await prova(`cd /tmp && FOO=1 sudo tail -n 5 ${arq}`), null);
+});
+
+test('caminho com espaço e acento, entre aspas, é fonte e exige leitura', async () => {
+  mkdirSync(join(raiz, 'Meu Projeto'), { recursive: true });
+  const arq = join(raiz, 'Meu Projeto', 'decisão.md');
+  writeFileSync(arq, 'x');
+  const sem = transcript(prompt(), uso('Read', { file_path: '/outro.md' }));
+  assert.ok(negou(await executar(enviar(`siga "${arq}" à risca`, { transcript_path: sem }), { config: cfg('bloquear') })));
+  const solto = join(raiz, 'docs', 'análise.md');
+  mkdirSync(join(raiz, 'docs'), { recursive: true });
+  writeFileSync(solto, 'x');
+  assert.ok(negou(await executar(enviar(`veja ${solto}`, { transcript_path: sem }), { config: cfg('bloquear') })));
+  const lido = transcript(prompt(), uso('Read', { file_path: arq }), uso('Read', { file_path: solto }));
+  assert.equal(await executar(enviar(`siga "${arq}" e ${solto}`, { transcript_path: lido }), { config: cfg('bloquear') }), null);
+});
+
+test('mais de 8 arquivos não escondem o destino: ele é conferido e o corte é registrado', async () => {
+  const arqs = Array.from({ length: 10 }, (_, i) => arquivoReal(`n${i}.md`));
+  const lidos = transcript(prompt(), ...arqs.slice(0, 8).map((a) => uso('Read', { file_path: a })));
+  const saida = await executar(enviar(`veja ${arqs.join(' ')} --para Fulano`, { transcript_path: lidos }), { config: cfg('bloquear') });
+  assert.ok(negou(saida));
+  const motivo = saida.hookSpecificOutput.permissionDecisionReason;
+  assert.match(motivo, /"Fulano" sem leitura/);
+  assert.match(motivo, /fontes_cortadas: 2/);
+  assert.match(registro()[0].trecho, /fontes_cortadas: 2/);
 });

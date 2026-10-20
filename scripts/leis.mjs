@@ -94,7 +94,7 @@ function errosDaLeitura(leitura) {
     if (!ehListaDeTextos(leitura[campo])) erros.push(`leitura.${campo} deve ser lista de textos`);
     else if (['saidas', 'leitores'].includes(campo)) leitura[campo].forEach((p, i) => { if (!regexCompila(p)) erros.push(`leitura.${campo}[${i}] não é uma regex válida`); });
   }
-  (leitura.leitores ?? []).forEach((p, i) => { if (typeof p === 'string' && !p.includes('{fonte}')) erros.push(`leitura.leitores[${i}] deve conter o marcador {fonte}`); });
+  if (Array.isArray(leitura.leitores)) leitura.leitores.forEach((p, i) => { if (typeof p === 'string' && !p.includes('{fonte}')) erros.push(`leitura.leitores[${i}] deve conter o marcador {fonte}`); });
   if (leitura.registro_de_fato !== undefined && !(ehTexto(leitura.registro_de_fato) && regexCompila(leitura.registro_de_fato))) erros.push('leitura.registro_de_fato deve ser uma regex válida');
   return [...erros, ...errosDasConsultas(leitura.consultas)];
 }
