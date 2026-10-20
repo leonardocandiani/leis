@@ -109,7 +109,7 @@ Cada lei do modelo tem um `papel` (`pronto`, `antes`, `troca`, `leitura`, `sim`,
 
 ### Fiscal da L.I.D.A. (`leitura`)
 
-Decisão não sai sem a leitura da fonte. O `fiscal-leitura` olha o texto da ferramenta (`message`, `prompt`, `description` e `script`; no Bash, o comando) e extrai as fontes citadas: caminhos absolutos de arquivos que existem, o valor das flags de `flags_de_destino` e os nomes de `nomes`. Para cada fonte procura, nos últimos 30 minutos do transcript, um `Read` ou `Grep` que a leia, ou um Bash que case com um padrão de `leitores`. Fonte sem leitura vira o achado `sem_leitura`, com o comando que resolve. As `consultas` (comandos locais seus, rodados em paralelo com teto de 2 s no total) respondem "isso já foi feito ou já está aberto?": consulta que acha o destino ou dois dos termos do texto gera o achado `ja_existe`, com até duas linhas de evidência mascaradas. Consulta que estoura o teto vira `consulta_indisponivel` no registro e nunca nega.
+Decisão não sai sem a leitura da fonte. O `fiscal-leitura` olha o texto da ferramenta (`message`, `prompt`, `description` e `script`; no Bash, o comando) e extrai as fontes citadas: caminhos absolutos de arquivos que existem, o valor das flags de `flags_de_destino` e os nomes de `nomes`. Para cada fonte procura, nos últimos 30 minutos do transcript, um `Read` ou `Grep` que a leia, ou um Bash que case com um padrão de `leitores`. Fonte sem leitura vira o achado `sem_leitura`, com o comando que resolve. As `consultas` (comandos locais seus, rodados em paralelo com teto de 2 s no total) respondem "isso já foi feito ou já está aberto?". Os `{termos}` saem só do texto livre da ação (no Bash, os valores de `--titulo`, `--contexto`, `--mensagem` e afins, sem os de `flags_ignoradas`, padrão `["--origem"]`), com horários, datas e nomes próprios primeiro, no máximo 8. A consulta só produz linhas candidatas (as que têm o destino ou um termo, sem o eco da própria busca nem cabeçalho TOON, no máximo 12). Com candidatas, o JEV escolhe entre `ja_feito`, `ja_aberto` e `nenhum`; só os dois primeiros, com confiança de ao menos 0,7, viram o achado `ja_existe`, citando as linhas (mascaradas). JEV fora do ar registra `jev_indisponivel` e não nega. Consulta que estoura o teto vira `consulta_indisponivel` no registro e nunca nega.
 
 Em `observar` o fiscal só registra; em `bloquear` nega, listando cada achado. Quem leu de verdade e quer seguir escreve `LIDO: <o que leu e concluiu>` (ao menos 10 caracteres) no texto: isso libera e registra. Sem achado, o fiscal não registra nada. Se o transcript não pode ser lido, ele não acusa leitura.
 
@@ -124,6 +124,7 @@ Tudo que é específico da sua máquina entra em `leitura` no seu `leis.json`, e
     "leitores": ["\\bmeu-cli msgs\\s+['\"]?{fonte}"],
     "flags_de_destino": ["--para", "--conversa"],
     "nomes": ["Fulano"],
+    "flags_ignoradas": ["--origem"],
     "consultas": [
       { "nome": "abertos", "comando": ["meu-cli", "buscar", "{termos}"], "quando": "sempre" },
       { "nome": "enviados", "comando": ["meu-cli", "enviados", "{destino}"], "quando": "com_destino" }

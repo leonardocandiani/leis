@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { executar } from '../scripts/fiscal-leitura.mjs';
+import { executar, linhasCandidatas, termosDe, textoLivre } from '../scripts/fiscal-leitura.mjs';
 import { executar as executarStop } from '../scripts/fiscal-resposta.mjs';
 import { validarEsquema } from '../scripts/leis.mjs';
 import { isolar, restaurar, configCom, jevFalso, jevProibido, registro } from './ajuda.mjs';
@@ -94,27 +94,62 @@ test('nomes configurados contam como fonte', async () => {
   assert.ok(negou(await executar(enviar('avise o beltrano do prazo', { transcript_path: t }), { config: c })));
 });
 
-test('consulta que acha o destino gera ja_existe com evidência mascarada', async () => {
-  const consulta = { nome: 'abertos', comando: [process.execPath, '-e', 'console.log("count: 1"); console.log("conversa de {destino} sobre contrato, contato dev@exemplo.com")'], quando: 'com_destino' };
-  const c = cfg('bloquear', { consultas: [consulta] });
-  const saida = await executar(bash('meu-envio texto --para Fulano --mensagem "oi"'), { config: c });
+const consultaDe = (saida, extra = {}) => ({ nome: 'abertos', comando: [process.execPath, '-e', `console.log(${JSON.stringify(saida)})`], ...extra });
+const ENVIO = 'meu-envio texto --para Fulano --origem whatsapp --mensagem "Podemos marcar às 15h?"';
+
+test('JEV ja_aberto com 0,8 nega citando a linha, mascarada', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('oferta de 15h para Fulano, contato dev@exemplo.com', { quando: 'com_destino' })] });
+  const jev = jevFalso('achado', 'ja_aberto', 0.8);
+  const saida = await executar(bash(ENVIO), { config: c, jev });
   assert.ok(negou(saida));
   const motivo = saida.hookSpecificOutput.permissionDecisionReason;
   assert.match(motivo, /consulta "abertos"/);
-  assert.match(motivo, /conversa de Fulano/);
+  assert.match(motivo, /oferta de 15h para Fulano/);
   assert.doesNotMatch(motivo, /dev@exemplo/);
+  assert.equal(jev.chamadas[0].estado.evidencias.length, 1);
 });
 
-test('consulta com quando com_destino não roda sem destino', async () => {
-  const consulta = { nome: 'abertos', comando: [process.execPath, '-e', 'console.log("contrato prazo valor")'], quando: 'com_destino' };
-  assert.equal(await executar(enviar('contrato prazo valor combinado'), { config: cfg('bloquear', { consultas: [consulta] }) }), null);
+test('JEV ja_feito com confiança alta também nega', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('enviado ontem para Fulano')] });
+  assert.ok(negou(await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'ja_feito', 0.9) })));
 });
 
-test('consulta que acha por dois termos do texto', async () => {
-  const consulta = { nome: 'feitos', comando: [process.execPath, '-e', 'console.log("proposta enviada ontem com desconto aprovado")'] };
-  const saida = await executar(enviar('enviar proposta com desconto aprovado'), { config: cfg('bloquear', { consultas: [consulta] }) });
-  assert.ok(negou(saida));
-  assert.match(saida.hookSpecificOutput.permissionDecisionReason, /"feitos"/);
+test('JEV nenhum não nega mesmo com candidatas; confiança 0,5 não nega', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('oferta de 15h para Fulano')] });
+  assert.equal(await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'nenhum', 0.95) }), null);
+  assert.equal(await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'ja_aberto', 0.5) }), null);
+  assert.equal(registro().length, 0);
+});
+
+test('JEV indisponível registra jev_indisponivel e não nega', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('oferta de 15h para Fulano')] });
+  assert.equal(await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', null) }), null);
+  assert.deepEqual(registro().map((e) => e.decisao), ['jev_indisponivel']);
+});
+
+test('sem candidatas o JEV nem é chamado', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('nada relacionado aqui')] });
+  assert.equal(await executar(bash('meu-envio texto --para Fulano --mensagem "x"'), { config: c, jev: jevProibido }), null);
+});
+
+test('o eco da busca na saída da consulta é descartado', async () => {
+  const consulta = { nome: 'busca', comando: ['meu-cli', 'buscar', '{termos}'] };
+  const vars = { termos: ['15h', 'Beltrano'], destino: 'Fulano' };
+  const saida = ['busca: "15h Beltrano"', 'count: 1', 'resultados[1]{id,texto}:', '  7,reunião às 15h com Beltrano', 'help: refine'].join('\n');
+  assert.deepEqual(linhasCandidatas(saida, vars, ['15h Beltrano']), ['7,reunião às 15h com Beltrano']);
+  assert.deepEqual(linhasCandidatas('destino: Fulano\nitens[0]{a}:\n', vars, ['Fulano']), []);
+  assert.ok(consulta);
+});
+
+test('termos vêm do texto livre, sem --origem, com horário primeiro e no máximo 8', () => {
+  const cmd = 'meu-envio texto --para Fulano --origem whatsapp --contexto "reunião sobre proposta" --mensagem "Podemos às 15h ou 10h, Beltrano confirma o contrato na sexta 20/10?"';
+  const termos = termosDe(textoLivre('Bash', cmd, {}));
+  assert.deepEqual(termos.slice(0, 3), ['15h', '10h', '20/10']);
+  assert.ok(termos.includes('Beltrano'));
+  assert.ok(!termos.includes('whatsapp') && !termos.includes('Fulano'));
+  assert.ok(termos.length <= 8);
+  assert.ok(!termosDe(textoLivre('Bash', cmd, { flags_ignoradas: ['--contexto'] })).includes('reuniao'));
+  assert.equal(textoLivre('Bash', 'ls --origem x', {}), '');
 });
 
 test('consulta com stdout só de cabeçalho ou vazio não acha', async () => {

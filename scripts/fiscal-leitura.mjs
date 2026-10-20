@@ -6,6 +6,7 @@ import { statSync } from 'node:fs';
 import { nomeDoProjeto, principal, projetoTem, saidaNegar } from './entrada.mjs';
 import { carregarConfig, leiPorPapel, modoDaLei, nomeCompleto, normalizar } from './leis.mjs';
 import { escapar, leuFonte, regexSeguro, usosRecentes } from './leitura.mjs';
+import { perguntar as perguntarAoJev, escolha } from './jev.mjs';
 import { mascarar, trecho } from './mascarar.mjs';
 import { registrar } from './registro.mjs';
 
@@ -13,10 +14,19 @@ const FERRAMENTAS = new Set(['SendMessage', 'Agent', 'Workflow']);
 const CAMPOS_DE_TEXTO = ['message', 'prompt', 'description', 'script'];
 const TETO_CONSULTAS_MS = 2000;
 const MAX_FONTES = 8;
-const MAX_TERMOS = 6;
+const MAX_TERMOS = 8;
+const MAX_CANDIDATAS = 12;
+const CONFIANCA_MINIMA = 0.7;
+const JEV_MINIMO_MS = 800;
+const FLAGS_IGNORADAS_PADRAO = ['--origem'];
+const FLAGS_DE_TEXTO = new Set(['titulo', 'contexto', 'mensagem', 'texto', 'descricao', 'corpo', 'assunto', 'motivo', 'nota', 'message', 'title', 'body', 'text', 'description']);
+const HORARIO = /\b\d{1,2}(?:h(?:\d{2})?|:\d{2})(?!\w)/g;
+const DATA = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/g;
+const NOME_PROPRIO = /\p{Lu}\p{L}{2,}/gu;
 const LIBERACAO = /\bLIDO:[ \t]*(\S.{9,})/s;
 const CAMINHO = /(?<![\w.:/~$-])\/(?:[\w.@+%-]+\/)*[\w.@+%-]+/g;
-const CABECALHO = /^(?:count:|help\b|0\s|\S+\[\d+\](?:\{[^}]*\})?:$)/;
+const TABELA = /^\S+\[\d+\](?:\{[^}]*\})?:$/;
+const CHAVE_VALOR = /^[\w-]+:(?:\s|$)/;
 const STOPWORDS = new Set(['para', 'como', 'com', 'uma', 'umas', 'uns', 'que', 'por', 'dos', 'das', 'nos', 'nas', 'mais', 'esta', 'este', 'esse', 'essa', 'isso', 'isto', 'sobre', 'entre', 'ainda', 'quando', 'onde', 'voce', 'seu', 'sua', 'ele', 'ela', 'foi', 'ser', 'tem', 'sem', 'mas', 'pelo', 'pela', 'aos', 'ate', 'depois', 'antes', 'tambem', 'ja', 'nao', 'sim', 'todo', 'toda', 'cada', 'fazer', 'feito']);
 
 const textoDaEntrada = (entrada) => (entrada.tool_name === 'Bash'
@@ -50,11 +60,26 @@ export function extrairFontes(texto, leitura = {}) {
   ].slice(0, MAX_FONTES);
 }
 
+// Só o texto livre da ação: no Bash, o valor das flags de texto (menos as ignoradas); nas outras ferramentas, o texto todo.
+export function textoLivre(nomeDaFerramenta, texto, leitura = {}) {
+  if (nomeDaFerramenta !== 'Bash') return texto;
+  const ignoradas = new Set(leitura.flags_ignoradas ?? FLAGS_IGNORADAS_PADRAO);
+  const rx = /(?:^|\s)(--[\w-]+)(?:=|\s+)("[^"]*"|'[^']*'|\S+)/g;
+  return [...texto.matchAll(rx)]
+    .filter(([, flag]) => FLAGS_DE_TEXTO.has(flag.slice(2)) && !ignoradas.has(flag))
+    .map(([, , valor]) => valor.replace(/^(["'])(.*)\1$/s, '$2')).join('\n');
+}
+
+// Prioridade: horários, datas, nomes próprios, depois as demais palavras sem stopword (as mais longas primeiro).
 export function termosDe(texto) {
-  const palavras = normalizar(texto.replace(/\S*\/\S*/g, ' ')).match(/[a-z]{4,}/g) ?? [];
-  const unicas = [...new Set(palavras)].filter((p) => !STOPWORDS.has(p));
-  const escolhidas = new Set([...unicas].sort((a, b) => b.length - a.length).slice(0, MAX_TERMOS));
-  return unicas.filter((p) => escolhidas.has(p));
+  const datas = texto.match(DATA) ?? [];
+  const livre = texto.replace(/\S*\/\S*/g, ' ');
+  const nomes = (livre.replace(/(^|[.!?]\s+|\n)\p{L}+/gu, '$1').match(NOME_PROPRIO) ?? []).filter((n) => !STOPWORDS.has(normalizar(n)));
+  const palavras = (normalizar(livre).match(/[a-z]{4,}/g) ?? []).filter((p) => !STOPWORDS.has(p)).sort((a, b) => b.length - a.length);
+  const vistos = new Set();
+  return [...(livre.match(HORARIO) ?? []), ...datas, ...nomes, ...palavras]
+    .filter((t) => (vistos.has(normalizar(t)) ? false : vistos.add(normalizar(t))))
+    .slice(0, MAX_TERMOS);
 }
 
 // Regex de leitor vira comando legível para a dica: sem \b, \s+ e classes de aspas.
@@ -85,25 +110,56 @@ function rodarConsulta(consulta, vars, tetoMs) {
   });
 }
 
-export function linhasQueAchou(stdout, vars) {
+const ehEco = (linha, ecos) => ecos.some((e) => linha.includes(e) && (/\s/.test(e) || new RegExp(`^[\\w-]+:\\s*["']?${escapar(e)}["']?$`).test(linha)));
+
+// Linhas candidatas: sem eco da busca nem cabeçalho TOON, com o destino ou ao menos um termo.
+export function linhasCandidatas(stdout, vars, ecos = []) {
   const destino = vars.destino ? normalizar(vars.destino) : '';
-  return stdout.split('\n').map((l) => l.trim()).filter((l) => l && !CABECALHO.test(l)).filter((l) => {
+  const termos = vars.termos.map(normalizar);
+  let naTabela = false;
+  return stdout.split('\n').map((l) => l.trim()).filter((l) => {
+    if (!l || /^(?:count:|help\b|0\s)/.test(l)) return false;
+    if (TABELA.test(l)) return !(naTabela = true);
+    return !(CHAVE_VALOR.test(l) && !naTabela) && !ehEco(l, ecos);
+  }).filter((l) => {
     const n = normalizar(l);
-    return (destino && n.includes(destino)) || vars.termos.filter((t) => n.includes(t)).length >= 2;
+    return (destino && n.includes(destino)) || termos.some((t) => n.includes(t));
   });
 }
 
-async function consultar(leitura, fontes, texto, tetoMs) {
-  const vars = { termos: termosDe(texto), destino: fontes.find((f) => f.tipo === 'destino')?.fonte ?? fontes.find((f) => f.tipo === 'nome')?.fonte, arquivo: fontes.find((f) => f.tipo === 'arquivo')?.fonte };
+async function consultar(leitura, fontes, tetoMs, textoDaAcao) {
+  const vars = { termos: termosDe(textoDaAcao), destino: fontes.find((f) => f.tipo === 'destino')?.fonte ?? fontes.find((f) => f.tipo === 'nome')?.fonte, arquivo: fontes.find((f) => f.tipo === 'arquivo')?.fonte };
   const aplicaveis = (leitura.consultas ?? []).filter((c) => aplica(c, vars));
   const resultados = await Promise.all(aplicaveis.map((c) => rodarConsulta(c, vars, tetoMs)));
-  return {
-    indisponiveis: resultados.filter((r) => r.indisponivel).map((r) => r.nome),
-    achados: resultados.filter((r) => !r.indisponivel).flatMap((r) => {
-      const linhas = linhasQueAchou(r.stdout, vars).slice(0, 2).map((l) => trecho(l, 200));
-      return linhas.length ? [{ tipo: 'ja_existe', fonte: r.nome, texto: `a consulta "${r.nome}" já achou algo parecido (${linhas.map((l) => `"${l}"`).join('; ')}); confirme se isto já foi feito ou está aberto.` }] : [];
-    }),
-  };
+  const ecos = aplicaveis.flatMap((c) => c.comando.filter((a) => /\{(?:termos|destino)\}/.test(a)).map((a) => preencher(a, vars))).filter(Boolean);
+  const candidatas = resultados.filter((r) => !r.indisponivel)
+    .flatMap((r) => linhasCandidatas(r.stdout, vars, ecos).map((linha) => ({ consulta: r.nome, linha: trecho(linha, 200) })))
+    .slice(0, MAX_CANDIDATAS);
+  return { indisponiveis: resultados.filter((r) => r.indisponivel).map((r) => r.nome), candidatas };
+}
+
+const CRITERIOS_DA_CONSULTA = {
+  ja_feito: 'a ação descrita já foi executada, segundo as linhas de evidência',
+  ja_aberto: 'já existe pedido, espera ou oferta aberta sobre o mesmo assunto, inclusive horário já oferecido a outra pessoa',
+  nenhum: 'as linhas não mostram que a ação já foi feita nem que haja algo aberto sobre ela',
+};
+
+async function julgarCandidatas(candidatas, texto, timeoutMs, deps, config) {
+  const estado = { acao: mascarar(texto).slice(0, 1500), evidencias: candidatas.map((c) => c.linha) };
+  const perguntas = { achado: { type: 'choice', instructions: 'Dada a ação (campo acao) e as linhas que uma consulta local devolveu (campo evidencias), diga se a ação já foi feita ou se já há algo aberto sobre ela. Escolha "nenhum" na dúvida.', criteria: CRITERIOS_DA_CONSULTA } };
+  const respostas = await (deps.jev ?? perguntarAoJev)(estado, perguntas, { timeoutMs, extras: config.jev?.arquivos_chave ?? [] });
+  return escolha(respostas, 'achado', CRITERIOS_DA_CONSULTA);
+}
+
+async function achadosDasConsultas(consultas, texto, inicio, deps, config, tetoMs) {
+  if (!consultas.candidatas.length) return { achados: [], jevFora: false };
+  const veredito = await julgarCandidatas(consultas.candidatas, texto, Math.max(JEV_MINIMO_MS, tetoMs - (Date.now() - inicio)), deps, config);
+  if (!veredito) return { achados: [], jevFora: true };
+  if (veredito.escolha === 'nenhum' || (veredito.confianca ?? 0) < CONFIANCA_MINIMA) return { achados: [], jevFora: false };
+  const consulta = [...new Set(consultas.candidatas.map((c) => c.consulta))].join(', ');
+  const linhas = consultas.candidatas.slice(0, 3).map((c) => `"${c.linha}"`).join('; ');
+  const quadro = veredito.escolha === 'ja_feito' ? 'a ação já foi feita' : 'já há algo aberto sobre o mesmo assunto';
+  return { achados: [{ tipo: 'ja_existe', fonte: consulta, texto: `a consulta "${consulta}" indica que ${quadro} (${linhas}); confirme antes de repetir.` }], jevFora: false };
 }
 
 export async function executar(entrada, deps = {}) {
@@ -127,10 +183,13 @@ export async function executar(entrada, deps = {}) {
 
   const fontes = extrairFontes(texto, leitura);
   const usos = fontes.length && entrada.transcript_path ? (deps.usosRecentes ?? usosRecentes)(entrada.transcript_path, deps.agora ?? Date.now()) : null;
-  const consultas = await consultar(leitura, fontes, texto, deps.tetoMs ?? TETO_CONSULTAS_MS);
+  const teto = deps.tetoMs ?? TETO_CONSULTAS_MS;
+  const consultas = await consultar(leitura, fontes, teto, textoLivre(nome, texto, leitura));
   for (const indisponivel of consultas.indisponiveis) registrar({ ...base, decisao: 'consulta_indisponivel', trecho: indisponivel });
 
-  const achados = [...(usos ? achadosSemLeitura(fontes, usos, leitura) : []), ...consultas.achados];
+  const doJev = await achadosDasConsultas(consultas, texto, inicio, deps, config, teto);
+  if (doJev.jevFora) registrar({ ...base, decisao: 'jev_indisponivel', trecho: 'consulta com candidatas' });
+  const achados = [...(usos ? achadosSemLeitura(fontes, usos, leitura) : []), ...doJev.achados];
   if (!achados.length) return null;
 
   const bloquear = modoDaLei(config, lei.numero) === 'bloquear';
