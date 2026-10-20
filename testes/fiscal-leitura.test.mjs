@@ -55,7 +55,7 @@ test('arquivo citado e nunca lido: nega em bloquear, só observa em observar', a
   assert.match(saida.hookSpecificOutput.permissionDecisionReason, /Lei 4 \(L\.I\.D\.A\.\)/);
   assert.match(saida.hookSpecificOutput.permissionDecisionReason, /Read /);
   assert.match(saida.hookSpecificOutput.permissionDecisionReason, /LIDO:/);
-  assert.deepEqual([registro()[0].hook, registro()[0].decisao, registro()[0].natureza], ['fiscal-leitura', 'negada', 'omissao']);
+  assert.deepEqual([registro()[0].hook, registro()[0].decisao, registro()[0].natureza], ['fiscal-leitura', 'negada', 'acao']);
 
   const obs = await executar(enviar(`siga o plano de ${arq}`, { transcript_path: t }), { config: cfg('observar') });
   assert.equal(obs, null);
@@ -144,7 +144,7 @@ test('o eco da busca na saída da consulta é descartado', async () => {
 test('termos vêm do texto livre, sem --origem, com horário primeiro e no máximo 8', () => {
   const cmd = 'meu-envio texto --para Fulano --origem whatsapp --contexto "reunião sobre proposta" --mensagem "Podemos às 15h ou 10h, Beltrano confirma o contrato na sexta 20/10?"';
   const termos = termosDe(textoLivre('Bash', cmd, {}));
-  assert.deepEqual(termos.slice(0, 3), ['15h', '10h', '20/10']);
+  assert.deepEqual(termos.slice(0, 3), ['15h', '10h', 'Beltrano'], 'no máximo 2 termos de tempo antes dos nomes');
   assert.ok(termos.includes('Beltrano'));
   assert.ok(!termos.includes('whatsapp') && !termos.includes('Fulano'));
   assert.ok(termos.length <= 8);
@@ -289,4 +289,15 @@ test('Stop: sem leitores ou sem registro_de_fato configurados, a omissão não r
   assert.equal(await executarStop(stop({ transcript_path: t }), { config: configCom({}), jev: jevProibido }), null);
   assert.equal(await executarStop(stop({ transcript_path: t }), { config: cfg('observar', { registro_de_fato: undefined }), jev: jevProibido }), null);
   assert.equal(registro().length, 0);
+});
+
+test('com mais candidatas que vagas, sobem as linhas com mais termos em comum', async () => {
+  const ruido = Array.from({ length: 20 }, (_, i) => `aviso ${i} sobre 15h`).join('\n');
+  const alvo = 'Fulano confirmou a call das 15h ontem';
+  const c = cfg('bloquear', { consultas: [{ ...consultaDe(ruido), nome: 'ruido' }, { ...consultaDe(alvo), nome: 'alvo' }] });
+  const jev = jevFalso('achado', 'nenhum', 0.9);
+  await executar(bash('meu-envio texto --para Fulano --mensagem "Confirmo a call das 15h com Fulano?"'), { config: c, jev });
+  const vistas = jev.chamadas[0].estado.evidencias;
+  assert.equal(vistas.length, 12);
+  assert.equal(vistas[0], alvo);
 });

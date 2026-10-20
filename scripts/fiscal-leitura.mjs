@@ -77,7 +77,7 @@ export function termosDe(texto) {
   const nomes = (livre.replace(/(^|[.!?]\s+|\n)\p{L}+/gu, '$1').match(NOME_PROPRIO) ?? []).filter((n) => !STOPWORDS.has(normalizar(n)));
   const palavras = (normalizar(livre).match(/[a-z]{4,}/g) ?? []).filter((p) => !STOPWORDS.has(p)).sort((a, b) => b.length - a.length);
   const vistos = new Set();
-  return [...(livre.match(HORARIO) ?? []), ...datas, ...nomes, ...palavras]
+  return [...[...(livre.match(HORARIO) ?? []), ...datas].slice(0, 2), ...nomes.slice(0, 3), ...palavras]
     .filter((t) => (vistos.has(normalizar(t)) ? false : vistos.add(normalizar(t))))
     .slice(0, MAX_TERMOS);
 }
@@ -127,20 +127,29 @@ export function linhasCandidatas(stdout, vars, ecos = []) {
   });
 }
 
+// Uma consulta ruidosa não pode ocupar as vagas do JEV: sobem as linhas com mais termos em comum (destino vale 3).
+function pontosDaLinha(linha, vars) {
+  const n = normalizar(linha);
+  const destino = vars.destino && n.includes(normalizar(vars.destino)) ? 3 : 0;
+  return destino + vars.termos.filter((t) => n.includes(normalizar(t))).length;
+}
+
 async function consultar(leitura, fontes, tetoMs, textoDaAcao) {
   const vars = { termos: termosDe(textoDaAcao), destino: fontes.find((f) => f.tipo === 'destino')?.fonte ?? fontes.find((f) => f.tipo === 'nome')?.fonte, arquivo: fontes.find((f) => f.tipo === 'arquivo')?.fonte };
   const aplicaveis = (leitura.consultas ?? []).filter((c) => aplica(c, vars));
   const resultados = await Promise.all(aplicaveis.map((c) => rodarConsulta(c, vars, tetoMs)));
   const ecos = aplicaveis.flatMap((c) => c.comando.filter((a) => /\{(?:termos|destino)\}/.test(a)).map((a) => preencher(a, vars))).filter(Boolean);
   const candidatas = resultados.filter((r) => !r.indisponivel)
-    .flatMap((r) => linhasCandidatas(r.stdout, vars, ecos).map((linha) => ({ consulta: r.nome, linha: trecho(linha, 200) })))
-    .slice(0, MAX_CANDIDATAS);
+    .flatMap((r) => linhasCandidatas(r.stdout, vars, ecos).map((linha) => ({ consulta: r.nome, linha: trecho(linha, 200), pontos: pontosDaLinha(linha, vars) })))
+    .sort((a, b) => b.pontos - a.pontos)
+    .slice(0, MAX_CANDIDATAS)
+    .map(({ consulta, linha }) => ({ consulta, linha }));
   return { indisponiveis: resultados.filter((r) => r.indisponivel).map((r) => r.nome), candidatas };
 }
 
 const CRITERIOS_DA_CONSULTA = {
   ja_feito: 'a ação descrita já foi executada, segundo as linhas de evidência',
-  ja_aberto: 'já existe pedido, espera ou oferta aberta sobre o mesmo assunto, inclusive horário já oferecido a outra pessoa',
+  ja_aberto: 'já existe pedido, espera ou oferta aberta que esta ação repete ou contradiz: o mesmo pedido de novo, ou o mesmo horário já oferecido a outra pessoa. Ação que dá andamento ao que está aberto (responde, troca, fecha) não conta',
   nenhum: 'as linhas não mostram que a ação já foi feita nem que haja algo aberto sobre ela',
 };
 
@@ -174,7 +183,7 @@ export async function executar(entrada, deps = {}) {
   if (!texto || (nome === 'Bash' && !casaAlgum(leitura.saidas, texto))) return null;
 
   const inicio = Date.now();
-  const base = { sessao: entrada.session_id, projeto: nomeDoProjeto(entrada), hook: 'fiscal-leitura', lei: lei.sigla, natureza: 'omissao' };
+  const base = { sessao: entrada.session_id, projeto: nomeDoProjeto(entrada), hook: 'fiscal-leitura', lei: lei.sigla, natureza: 'acao' };
   const liberacao = LIBERACAO.exec(texto);
   if (liberacao) {
     registrar({ ...base, decisao: 'liberada', trecho: liberacao[0] });

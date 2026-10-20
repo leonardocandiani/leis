@@ -80,5 +80,7 @@ export async function perguntar(estado, perguntas, opcoes = {}) {
 export function escolha(respostas, id, criterios) {
   const r = respostas?.[id];
   if (!r || typeof r.choice !== 'string' || !Object.hasOwn(criterios, r.choice)) return null;
-  return { escolha: r.choice, confianca: typeof r.confidence === 'number' ? r.confidence : null };
+  const p = r.probabilities?.[r.choice];
+  const confianca = typeof r.confidence === 'number' ? r.confidence : typeof p === 'number' ? p : null;
+  return { escolha: r.choice, confianca };
 }
