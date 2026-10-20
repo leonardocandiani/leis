@@ -72,6 +72,7 @@ function rmEnvSettings() {
 test('escolha só aceita opção que está na lista', () => {
   const criterios = { a: 'x', b: 'y' };
   assert.deepEqual(escolha({ q: { choice: 'a', confidence: 0.8 } }, 'q', criterios), { escolha: 'a', confianca: 0.8 });
+  assert.deepEqual(escolha({ q: { choice: 'a', probabilities: { a: 0.76, b: 0.24 } } }, 'q', criterios), { escolha: 'a', confianca: 0.76 });
   assert.equal(escolha({ q: { choice: 'inventada' } }, 'q', criterios), null);
   assert.equal(escolha(null, 'q', criterios), null);
 });

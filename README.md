@@ -46,7 +46,7 @@
 ```yaml
 produto:     plugin do Claude Code que faz as leis de trabalho valerem
 leis:        seis leis-modelo, troque pelas suas
-hooks:       sessao, relato, fiscal-resposta e fiscal-acao, todos falham abertos
+hooks:       sessao, relato, fiscal-resposta, fiscal-acao e fiscal-leitura, todos falham abertos
 modos:       observar (padrão) ou bloquear, por lei
 medicao:     registro local em JSONL, /leis:leis-medir por lei, 24 h e 7 d
 privacidade: registro só na sua máquina, token, e-mail e telefone mascarados
@@ -103,8 +103,38 @@ O texto completo de cada uma, com erro e correção, está em `leis/modelo.json`
 | `relato` | cada mensagem do dono | se ele corrige citando lei ("infringiu", "L2", a sigla, "de novo", "já te falei"), acha qual foi quebrada, registra e manda corrigir o padrão |
 | `fiscal-resposta` | fim de cada resposta | pergunta final ou cardápio ("quer que eu...") dispara o JEV, que diz se quebrou T.O.P. ou S.I.M. |
 | `fiscal-acao` | antes de Bash e AskUserQuestion | pergunta ao dono pelo terminal, laço com sleep em primeiro plano, segredo literal no comando |
+| `fiscal-leitura` | antes de SendMessage, Agent, Workflow e dos Bash de envio que você configurar | fonte citada (arquivo, destino, nome) sem leitura nos últimos 30 min, ou consulta local que já acha o mesmo trabalho (L.I.D.A.) |
 
 Cada lei do modelo tem um `papel` (`pronto`, `antes`, `troca`, `leitura`, `sim`, `aval`). Os fiscais procuram a lei pelo papel, não pelo número: renumerar não quebra nada. Lei sem papel conhecido não é fiscalizada por hook, só pelo `relato` e pela auditoria.
+
+### Fiscal da L.I.D.A. (`leitura`)
+
+Decisão não sai sem a leitura da fonte. O `fiscal-leitura` olha o texto da ferramenta (`message`, `prompt`, `description` e `script`; no Bash, o comando) e extrai as fontes citadas: caminhos absolutos de arquivos que existem, o valor das flags de `flags_de_destino` e os nomes de `nomes`. Para cada fonte procura, nos últimos 30 minutos do transcript, um `Read` ou `Grep` que a leia, ou um Bash que case com um padrão de `leitores`. Fonte sem leitura vira o achado `sem_leitura`, com o comando que resolve. As `consultas` (comandos locais seus, rodados em paralelo com teto de 2 s no total) respondem "isso já foi feito ou já está aberto?". Os `{termos}` saem só do texto livre da ação (no Bash, os valores de `--titulo`, `--contexto`, `--mensagem` e afins, sem os de `flags_ignoradas`, padrão `["--origem"]`), com horários, datas e nomes próprios primeiro, no máximo 8. A consulta só produz linhas candidatas (as que têm o destino ou um termo, sem o eco da própria busca nem cabeçalho TOON, no máximo 12). Com candidatas, o JEV escolhe entre `ja_feito`, `ja_aberto` e `nenhum`; só os dois primeiros, com confiança de ao menos 0,7, viram o achado `ja_existe`, citando as linhas (mascaradas). JEV fora do ar registra `jev_indisponivel` e não nega. Consulta que estoura o teto vira `consulta_indisponivel` no registro e nunca nega.
+
+Em `observar` o fiscal só registra; em `bloquear` nega, listando cada achado. Quem leu de verdade e quer seguir escreve `LIDO: <o que leu e concluiu>` (ao menos 10 caracteres) no texto: isso libera e registra. Sem achado, o fiscal não registra nada. Se o transcript não pode ser lido, ele não acusa leitura.
+
+Um segundo caminho roda no Stop: se o turno teve um leitor e nenhum `registro_de_fato`, e a resposta traz fato novo de terceiro (combinado, prazo, valor, decisão, material enviado), o JEV diz se isso devia ter ido ao contexto. Por enquanto só registra `observada`, em qualquer modo, até o falso positivo ser medido.
+
+Tudo que é específico da sua máquina entra em `leitura` no seu `leis.json`, e os padrões são regex em texto (o marcador `{fonte}` de um leitor vira a fonte escapada; as consultas aceitam `{termos}`, `{destino}` e `{arquivo}`):
+
+```json
+{
+  "leitura": {
+    "saidas": ["\\bmeu-envio\\s+texto\\b"],
+    "leitores": ["\\bmeu-cli msgs\\s+['\"]?{fonte}"],
+    "flags_de_destino": ["--para", "--conversa"],
+    "nomes": ["Fulano"],
+    "flags_ignoradas": ["--origem"],
+    "consultas": [
+      { "nome": "abertos", "comando": ["meu-cli", "buscar", "{termos}"], "quando": "sempre" },
+      { "nome": "enviados", "comando": ["meu-cli", "enviados", "{destino}"], "quando": "com_destino" }
+    ],
+    "registro_de_fato": "\\bmeu-cli contexto add\\b"
+  }
+}
+```
+
+`quando` aceita `sempre`, `com_destino` e `com_arquivo`. A config é validada: regex que não compila ou lista com tipo errado reprova o `leis.json`.
 
 ### Autocorreção e modos
 
@@ -144,7 +174,7 @@ Rode `/leis:leis-nova <o que a lei deve garantir>`. Uma lei tem:
 
 Lei sem mecanismo e sem medição é texto: o comando avisa quando falta um dos dois.
 
-Campos opcionais do `leis.json`: por lei, `aplicacao` (lista de frases de "como se aplica") e `papel`; no topo, `fontes` (lista de `{rotulo, caminho_ou_url}`) e `jev.arquivos_chave`. O gerador da rule escreve a tabela-resumo, a linha de fontes e, por lei, uma seção com regra, teste, como se aplica, erro e correção. `node scripts/gerar-rule.mjs --seco` mostra o que geraria sem escrever; `--help` lista as opções, e flag desconhecida sai com erro de uso (exit 2), sem efeito, em todos os scripts.
+Campos opcionais do `leis.json`: por lei, `aplicacao` (lista de frases de "como se aplica") e `papel`; no topo, `fontes` (lista de `{rotulo, caminho_ou_url}`), `jev.arquivos_chave` e `leitura` (ver o fiscal da L.I.D.A.). O gerador da rule escreve a tabela-resumo, a linha de fontes e, por lei, uma seção com regra, teste, como se aplica, erro e correção. `node scripts/gerar-rule.mjs --seco` mostra o que geraria sem escrever; `--help` lista as opções, e flag desconhecida sai com erro de uso (exit 2), sem efeito, em todos os scripts.
 
 ## Privacidade
 

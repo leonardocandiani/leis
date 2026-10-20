@@ -16,6 +16,7 @@ test('hook com entrada que não casa sai com 0 e sem saída', () => {
     ['relato', { prompt: 'cria a landing page' }],
     ['fiscal-resposta', { last_assistant_message: 'Pronto. 14 testes passam.', session_id: 's' }],
     ['fiscal-acao', { tool_name: 'Bash', tool_input: { command: 'ls' } }],
+    ['fiscal-leitura', { tool_name: 'Bash', tool_input: { command: 'ls' } }],
   ];
   for (const [script, entrada] of casos) {
     const r = rodar(script, entrada);
@@ -25,7 +26,7 @@ test('hook com entrada que não casa sai com 0 e sem saída', () => {
 });
 
 test('entrada corrompida ou vazia nunca derruba o hook (fail-open)', () => {
-  for (const script of ['sessao', 'relato', 'fiscal-resposta', 'fiscal-acao']) {
+  for (const script of ['sessao', 'relato', 'fiscal-resposta', 'fiscal-acao', 'fiscal-leitura']) {
     for (const lixo of ['', '{quebrado', 'null']) assert.equal(rodar(script, lixo).status, 0, `${script} com "${lixo}"`);
   }
 });
@@ -46,7 +47,7 @@ test('relato com lei citada funciona de ponta a ponta, sem rede', () => {
 test('hooks.json: todo comando usa o ponteiro do plugin e aponta para um script que existe', () => {
   const { hooks } = JSON.parse(readFileSync(`${raiz}hooks/hooks.json`, 'utf8'));
   const comandos = Object.values(hooks).flat().flatMap((g) => g.hooks.map((h) => h.command));
-  assert.equal(comandos.length, 4);
+  assert.equal(comandos.length, 5);
   for (const c of comandos) {
     assert.match(c, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[\w-]+\.mjs"$/);
     const arquivo = /scripts\/([\w-]+\.mjs)/.exec(c)[1];

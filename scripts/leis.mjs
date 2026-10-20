@@ -62,6 +62,43 @@ function errosDoJev(jev) {
   return jev.arquivos_chave === undefined || ehListaDeTextos(jev.arquivos_chave) ? [] : ['jev.arquivos_chave deve ser lista de textos'];
 }
 
+const QUANDO_DA_CONSULTA = ['sempre', 'com_destino', 'com_arquivo'];
+const regexCompila = (padrao) => {
+  try {
+    return !!new RegExp(String(padrao).replaceAll('{fonte}', 'x'), 'i');
+  } catch {
+    return false;
+  }
+};
+
+function errosDasConsultas(consultas) {
+  if (consultas === undefined) return [];
+  if (!Array.isArray(consultas)) return ['leitura.consultas deve ser lista'];
+  return consultas.flatMap((c, i) => {
+    const onde = `leitura.consultas[${i}]`;
+    if (!c || typeof c !== 'object') return [`${onde} não é objeto`];
+    const erros = [];
+    if (!ehTexto(c.nome)) erros.push(`${onde}.nome ausente ou vazio`);
+    if (!Array.isArray(c.comando) || c.comando.length === 0 || !ehListaDeTextos(c.comando)) erros.push(`${onde}.comando deve ser lista não vazia de textos`);
+    if (c.quando !== undefined && !QUANDO_DA_CONSULTA.includes(c.quando)) erros.push(`${onde}.quando deve ser um de: ${QUANDO_DA_CONSULTA.join(', ')}`);
+    return erros;
+  });
+}
+
+function errosDaLeitura(leitura) {
+  if (leitura === undefined) return [];
+  if (!leitura || typeof leitura !== 'object' || Array.isArray(leitura)) return ['leitura deve ser objeto'];
+  const erros = [];
+  for (const campo of ['saidas', 'leitores', 'flags_de_destino', 'flags_ignoradas', 'nomes']) {
+    if (leitura[campo] === undefined) continue;
+    if (!ehListaDeTextos(leitura[campo])) erros.push(`leitura.${campo} deve ser lista de textos`);
+    else if (['saidas', 'leitores'].includes(campo)) leitura[campo].forEach((p, i) => { if (!regexCompila(p)) erros.push(`leitura.${campo}[${i}] não é uma regex válida`); });
+  }
+  if (Array.isArray(leitura.leitores)) leitura.leitores.forEach((p, i) => { if (typeof p === 'string' && !p.includes('{fonte}')) erros.push(`leitura.leitores[${i}] deve conter o marcador {fonte}`); });
+  if (leitura.registro_de_fato !== undefined && !(ehTexto(leitura.registro_de_fato) && regexCompila(leitura.registro_de_fato))) erros.push('leitura.registro_de_fato deve ser uma regex válida');
+  return [...erros, ...errosDasConsultas(leitura.consultas)];
+}
+
 function errosDosModos(modos, numeros) {
   if (!modos || typeof modos !== 'object' || Array.isArray(modos)) return ['modos deve ser objeto'];
   return Object.entries(modos).flatMap(([chave, valor]) => {
@@ -82,7 +119,7 @@ export function validarEsquema(c) {
   c.leis.forEach((lei, i) => erros.push(...errosDaLei(lei, i, numeros)));
   if (!ehListaDeTextos(c.equilibrio)) erros.push('equilibrio deve ser lista de textos');
   if (!ehListaDeTextos(c.vedacoes)) erros.push('vedacoes deve ser lista de textos');
-  erros.push(...errosDePapeis(c.leis), ...errosDoJev(c.jev), ...errosDasFontes(c.fontes), ...errosDosModos(c.modos, numeros));
+  erros.push(...errosDePapeis(c.leis), ...errosDoJev(c.jev), ...errosDaLeitura(c.leitura), ...errosDasFontes(c.fontes), ...errosDosModos(c.modos, numeros));
   return erros;
 }
 

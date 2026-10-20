@@ -11,7 +11,8 @@
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/fiscal-resposta.mjs\"", "timeout": 10 }] }
     ],
     "PreToolUse": [
-      { "matcher": "Bash|AskUserQuestion", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/fiscal-acao.mjs\"", "timeout": 10 }] }
+      { "matcher": "Bash|AskUserQuestion", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/fiscal-acao.mjs\"", "timeout": 10 }] },
+      { "matcher": "SendMessage|Agent|Workflow|Bash", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/fiscal-leitura.mjs\"", "timeout": 10 }] }
     ]
   }
 }

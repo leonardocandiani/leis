@@ -121,6 +121,13 @@
   "jev": {
     "arquivos_chave": []
   },
+  "leitura": {
+    "saidas": [],
+    "leitores": [],
+    "flags_de_destino": [],
+    "nomes": [],
+    "consultas": []
+  },
   "modos": {
     "1": "observar",
     "2": "observar",
