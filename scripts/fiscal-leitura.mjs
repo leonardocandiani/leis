@@ -3,7 +3,7 @@
 // Confere se as fontes citadas foram lidas nos últimos 30 min e se uma consulta local já acha o mesmo trabalho.
 import { execFile } from 'node:child_process';
 import { statSync } from 'node:fs';
-import { nomeDoProjeto, principal, projetoTem, saidaNegar } from './entrada.mjs';
+import { nomeDoProjeto, principal, projetoTem, saidaContexto, saidaNegar } from './entrada.mjs';
 import { carregarConfig, leiPorPapel, modoDaLei, nomeCompleto, normalizar } from './leis.mjs';
 import { escapar, leuFonte, regexSeguro, usosRecentes } from './leitura.mjs';
 import { perguntar as perguntarAoJev, escolha } from './jev.mjs';
@@ -17,6 +17,8 @@ const MAX_FONTES = 8;
 const MAX_TERMOS = 8;
 const MAX_CANDIDATAS = 12;
 const CONFIANCA_MINIMA = 0.7;
+// Entre o aviso e a negação, o JEV está em dúvida: a sessão recebe o alerta e decide, nada é negado.
+const AVISO_MINIMO = 0.4;
 const JEV_MINIMO_MS = 800;
 const FLAGS_IGNORADAS_PADRAO = ['--origem'];
 const FLAGS_DE_TEXTO = new Set(['titulo', 'contexto', 'mensagem', 'texto', 'descricao', 'corpo', 'assunto', 'motivo', 'nota', 'message', 'title', 'body', 'text', 'description']);
@@ -173,9 +175,14 @@ async function achadosDasConsultas(consultas, texto, inicio, deps, config, tetoM
   if (!consultas.candidatas.length) return { achados: [], jevFora: false };
   const veredito = await julgarCandidatas(consultas.candidatas, texto, Math.max(JEV_MINIMO_MS, tetoMs - (Date.now() - inicio)), deps, config);
   if (!veredito) return { achados: [], jevFora: true };
-  if (veredito.escolha === 'nenhum' || (veredito.confianca ?? 0) < CONFIANCA_MINIMA) return { achados: [], jevFora: false };
-  const consulta = [...new Set(consultas.candidatas.map((c) => c.consulta))].join(', ');
+  const confianca = veredito.confianca ?? 0;
+  if (veredito.escolha === 'nenhum' || confianca < AVISO_MINIMO) return { achados: [], jevFora: false };
+  const consulta = [...new Set(consultas.candidatas.slice(0, 3).map((c) => c.consulta))].join(', ');
   const linhas = consultas.candidatas.slice(0, 3).map((c) => `"${c.linha}"`).join('; ');
+  if (confianca < CONFIANCA_MINIMA) {
+    const aviso = `isto pode já ter sido feito ou estar aberto, segundo a consulta "${consulta}" (${linhas}). Confira antes de seguir; se já está feito, responda com a prova em vez de repetir.`;
+    return { achados: [], aviso: { fonte: consulta, texto: aviso }, jevFora: false };
+  }
   const quadro = veredito.escolha === 'ja_feito' ? 'a ação já foi feita' : 'já há algo aberto sobre o mesmo assunto';
   return { achados: [{ tipo: 'ja_existe', fonte: consulta, texto: `a consulta "${consulta}" indica que ${quadro} (${linhas}); confirme antes de repetir.` }], jevFora: false };
 }
@@ -208,6 +215,10 @@ export async function executar(entrada, deps = {}) {
   const doJev = await achadosDasConsultas(consultas, texto, inicio, deps, config, teto);
   if (doJev.jevFora) registrar({ ...base, decisao: 'jev_indisponivel', trecho: 'consulta com candidatas' });
   const achados = [...(usos ? achadosSemLeitura(fontes, usos, leitura) : []), ...doJev.achados];
+  if (!achados.length && doJev.aviso) {
+    registrar({ ...base, decisao: 'avisada', duracao_ms: Date.now() - inicio, trecho: `aviso: ${doJev.aviso.fonte}` });
+    return saidaContexto('PreToolUse', `${nomeCompleto(lei)}: ${mascarar(doJev.aviso.texto)}`);
+  }
   if (!achados.length) return null;
 
   const bloquear = modoDaLei(config, lei.numero) === 'bloquear';

@@ -124,8 +124,9 @@ test('JEV ja_feito com confiança alta também nega', async () => {
 test('JEV nenhum não nega mesmo com candidatas; confiança 0,5 não nega', async () => {
   const c = cfg('bloquear', { consultas: [consultaDe('oferta de 15h para Fulano')] });
   assert.equal(await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'nenhum', 0.95) }), null);
-  assert.equal(await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'ja_aberto', 0.5) }), null);
-  assert.equal(registro().length, 0);
+  const emDuvida = await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'ja_aberto', 0.5) });
+  assert.ok(!negou(emDuvida) && /pode já ter sido feito/.test(emDuvida.hookSpecificOutput.additionalContext));
+  assert.deepEqual(registro().map((e) => e.decisao), ['avisada']);
 });
 
 test('JEV indisponível registra jev_indisponivel e não nega', async () => {
@@ -372,4 +373,21 @@ test('mais de 8 arquivos não escondem o destino: ele é conferido e o corte é 
   assert.match(motivo, /"Fulano" sem leitura/);
   assert.match(motivo, /fontes_cortadas: 2/);
   assert.match(registro()[0].trecho, /fontes_cortadas: 2/);
+});
+
+test('JEV em dúvida (0,4 a 0,7) não nega: devolve aviso à sessão e registra avisada, inclusive em bloquear', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('proposta de 15h para Fulano já enviada ontem', { quando: 'com_destino' })] });
+  const saida = await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'ja_feito', 0.5) });
+  assert.ok(!negou(saida));
+  assert.equal(saida.hookSpecificOutput.hookEventName, 'PreToolUse');
+  assert.match(saida.hookSpecificOutput.additionalContext, /pode já ter sido feito/);
+  assert.match(saida.hookSpecificOutput.additionalContext, /proposta de 15h para Fulano já enviada ontem/);
+  assert.equal(registro().at(-1).decisao, 'avisada');
+});
+
+test('abaixo de 0,4 nem aviso nem registro', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('proposta de 15h para Fulano já enviada ontem', { quando: 'com_destino' })] });
+  const saida = await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'ja_feito', 0.3) });
+  assert.equal(saida, null);
+  assert.equal(registro().filter((e) => e.hook === 'fiscal-leitura').length, 0);
 });
