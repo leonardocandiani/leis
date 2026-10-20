@@ -48,7 +48,7 @@ export function hooksAtivos(claudeDir) {
   const settings = ler(join(claudeDir, 'settings.json'));
   const instalados = ler(join(claudeDir, 'plugins', 'installed_plugins.json'));
   const habilitado = /"leis@[^"]+"\s*:\s*true/.test(settings);
-  const direto = /scripts\/(relato|fiscal-resposta|fiscal-acao|sessao)\.mjs/.test(settings);
+  const direto = /scripts\/(relato|fiscal-resposta|fiscal-acao|fiscal-leitura|sessao)\.mjs/.test(settings);
   if (habilitado || direto) return ok('hooks_ativos', habilitado ? 'plugin leis habilitado' : 'hooks das leis no settings.json');
   return falha('hooks_ativos', instalados.includes('"leis@') ? 'plugin instalado mas não habilitado' : 'plugin leis não instalado (claude plugin install leis@leis)');
 }

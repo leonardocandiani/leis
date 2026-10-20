@@ -2,15 +2,19 @@
 // Stop: confere a última resposta da sessão contra T.O.P. e S.I.M. Regra barata primeiro, JEV só quando ela dispara.
 // Quebra confirmada sempre devolve block: a sessão volta ao trabalho e se corrige no mesmo turno. Os modos
 // observar e bloquear valem para as ações de risco (fiscal-acao), onde negar tem custo; aqui o custo é um turno.
+// A omissão da L.I.D.A. (leu conversa de terceiro, trouxe fato novo e não registrou contexto) só registra por enquanto.
 import { nomeDoProjeto, principal, projetoTem } from './entrada.mjs';
 import { atualizarEstado, lerEstado } from './estado.mjs';
 import { carregarConfig, leiPorPapel, nomeCompleto } from './leis.mjs';
+import { comandosBash, leitorRegex, regexSeguro, turnoAtual } from './leitura.mjs';
 import { lerRegistro, registrar } from './registro.mjs';
 
 const PAPEL_DA_ESCOLHA = { top: 'pronto', sim: 'sim' };
 const CONFIANCA_MINIMA = 0.6;
 const JANELA_REINCIDENCIA_MS = 7 * 24 * 3600 * 1000;
 const TETO_BLOQUEIOS = 3;
+// Falso positivo da omissão de leitura ainda não foi medido: troque por 'bloqueada' (e devolva block) depois de medir.
+const DECISAO_OMISSAO_DE_LEITURA = 'observada';
 const OFERTA = /\bse (quiser|preferir)\b[^.\n]*\b(eu|já|posso|faço|subo|sigo)\b|\baguardo (o |seu |sua |a )?(ok|aval|confirma|retorno|resposta|decis|sinal)|\bfico no aguardo\b|(?:^|\s)é só (me )?(falar|avisar|dizer|confirmar)\b|\bme (avisa|avise|fala|diga|diz|confirma)\b[^.\n]*\b(se|qual|quando|o que|pra eu|para eu)\b/i;
 const CARDAPIO = /\bquer que eu\b|\bposso (seguir|continuar|prosseguir|avançar)\b|\bdeseja que eu\b|\bop[cç][aã]o\s*[a-d1-4]\b|\bprefere\s+(a|b|c|1|2)\b|\bqual (você )?prefere\b|\bme diga qual\b/i;
 
@@ -74,11 +78,8 @@ export function instrucaoDeCorrecao(config, lei, vezes, seguidas = 1) {
   return linhas.join(' ');
 }
 
-export async function executar(entrada, deps = {}) {
-  if (projetoTem('scripts', 'central', 'hooks', 'parada.ts')) return null;
+async function conferirEscolha(entrada, texto, deps) {
   const sessao = entrada.session_id ?? 'sem-sessao';
-  const texto = entrada.last_assistant_message
-    ?? (entrada.transcript_path ? (await import('./contexto.mjs')).ultimaRespostaDaSessao(entrada.transcript_path) : '');
   const sinal = regraBarata(texto);
   if (!sinal) return null;
 
@@ -103,6 +104,54 @@ export async function executar(entrada, deps = {}) {
   registrar({ ...base, lei: lei.sigla, decisao, prob: veredito.confianca, duracao_ms: duracao });
   const aviso = instrucaoDeCorrecao(config, lei, vezes, bloqueios);
   return decisao === 'bloqueada' ? { decision: 'block', reason: aviso } : { systemMessage: `[leis] ${aviso}` };
+}
+
+async function julgarOmissaoDeLeitura(config, lei, entrada, texto, deps) {
+  const { perguntar, escolha } = await import('./jev.mjs');
+  const { montarEstado } = await import('./contexto.mjs');
+  const criterios = {
+    nenhuma: 'a resposta não traz fato novo de terceiro, ou o fato já foi registrado no contexto',
+    leitura: `${lei.sigla}: ${lei.regra} Quebra quando a resposta traz fato novo de terceiro (combinado, prazo, valor, decisão, material enviado) que devia ir ao contexto e não foi registrado.`,
+  };
+  const perguntas = { quebra: { type: 'choice', instructions: 'A sessão leu uma conversa de terceiro neste turno e não registrou contexto. Confira a resposta final (campo resposta_final). Escolha "nenhuma" na dúvida.', criteria: criterios } };
+  const estado = montarEstado({ entrada, leis: [lei], extra: { resposta_final: texto.slice(-1500) } });
+  const inicio = Date.now();
+  const respostas = await (deps.jev ?? perguntar)(estado, perguntas, { extras: config.jev?.arquivos_chave ?? [] });
+  return { veredito: escolha(respostas, 'quebra', criterios), duracao: Date.now() - inicio };
+}
+
+// Nunca altera a saída do Stop e nunca lança: é observação, e o turno só é julgado uma vez.
+async function observarOmissaoDeLeitura(entrada, texto, deps) {
+  try {
+    if (!entrada.transcript_path || !texto) return;
+    const { config } = deps.config ?? carregarConfig();
+    const lei = leiPorPapel(config, 'leitura');
+    const { leitores = [], registro_de_fato: registroDeFato } = config.leitura ?? {};
+    if (!lei || !leitores.length || !registroDeFato) return;
+    const turno = (deps.turnoAtual ?? turnoAtual)(entrada.transcript_path);
+    const sessao = entrada.session_id ?? 'sem-sessao';
+    if (!turno || lerEstado(sessao).leitura_turno === turno.id) return;
+    const comandos = comandosBash(turno.usos);
+    const registrou = regexSeguro(registroDeFato);
+    if (!comandos.some((c) => leitores.some((p) => leitorRegex(p)?.test(c))) || comandos.some((c) => registrou?.test(c))) return;
+    atualizarEstado(sessao, { leitura_turno: turno.id });
+    const base = { sessao, projeto: nomeDoProjeto(entrada), hook: 'fiscal-resposta', lei: lei.sigla, natureza: 'omissao', trecho: texto.slice(-300) };
+    const { veredito, duracao } = await julgarOmissaoDeLeitura(config, lei, entrada, texto, deps);
+    if (!veredito) return registrar({ ...base, decisao: 'jev_indisponivel', duracao_ms: duracao });
+    const quebrou = veredito.escolha === 'leitura' && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA;
+    registrar({ ...base, decisao: quebrou ? DECISAO_OMISSAO_DE_LEITURA : 'passou', prob: veredito.confianca, duracao_ms: duracao });
+  } catch {
+    // observação nunca derruba o Stop
+  }
+}
+
+export async function executar(entrada, deps = {}) {
+  if (projetoTem('scripts', 'central', 'hooks', 'parada.ts')) return null;
+  const texto = entrada.last_assistant_message
+    ?? (entrada.transcript_path ? (await import('./contexto.mjs')).ultimaRespostaDaSessao(entrada.transcript_path) : '');
+  const saida = await conferirEscolha(entrada, texto, deps);
+  await observarOmissaoDeLeitura(entrada, texto, deps);
+  return saida;
 }
 
 await principal(import.meta.url, executar);

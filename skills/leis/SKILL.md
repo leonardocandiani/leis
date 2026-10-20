@@ -62,10 +62,16 @@ Lei nova só entra com a lista de quem ela pode contrariar e quem vence cada cas
 | UserPromptSubmit (`relato`) | quando o dono corrige citando lei, acha qual foi quebrada, registra e manda corrigir o padrão |
 | Stop (`fiscal-resposta`) | confere a última resposta contra T.O.P. e S.I.M.: regra barata primeiro, JEV só se ela dispara |
 | PreToolUse (`fiscal-acao`) | pergunta ao dono pelo terminal, laço com sleep em primeiro plano, segredo literal no comando |
+| PreToolUse (`fiscal-leitura`) | SendMessage, Agent, Workflow e Bash de envio: fonte citada sem leitura nos últimos 30 min ou consulta que já acha o trabalho (L.I.D.A.); `LIDO: <o que leu>` libera |
 | `gerar-rule.mjs` | gera a rule global `rules/leis.md` do `leis.json`, a fonte única |
 | `registro.jsonl` | uma linha por evento, com o trecho mascarado |
 | `/leis:leis-validar` e `/leis:leis-medir` | prova de implantação e medição |
 | `/leis:leis-auditar` e `auditor-leis` | caça quebras nos transcripts, inclusive as que ninguém apontou |
+
+A lei de papel `leitura` é fiscalizada pela seção `leitura` do `leis.json` (`saidas`, `leitores` com o marcador
+`{fonte}`, `flags_de_destino`, `nomes`, `consultas`, `registro_de_fato`): tudo que é específico da máquina do dono
+mora ali, nunca no plugin. Exemplo neutro: `"leitores": ["\\bmeu-cli msgs\\s+{fonte}"]`, `"flags_de_destino": ["--para"]`,
+`"consultas": [{ "nome": "abertos", "comando": ["meu-cli", "buscar", "{termos}"] }]`.
 
 Cada lei pode ter um `papel` (`pronto`, `antes`, `troca`, `leitura`, `sim`, `aval`); os fiscais procuram a lei por ele e
 lei sem papel só é coberta por relato e auditoria.

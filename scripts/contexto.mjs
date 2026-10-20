@@ -14,7 +14,7 @@ export function textoDe(conteudo) {
   return conteudo.filter((b) => b?.type === 'text' && typeof b.text === 'string').map((b) => b.text).join('\n');
 }
 
-function lerFinal(caminho, maxBytes) {
+export function lerFinal(caminho, maxBytes) {
   const fd = openSync(caminho, 'r');
   try {
     const { size } = fstatSync(fd);
