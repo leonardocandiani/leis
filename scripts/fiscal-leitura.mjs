@@ -28,6 +28,8 @@ const NOME_PROPRIO = /\p{Lu}\p{L}{2,}/gu;
 const LIBERACAO = /\bLIDO:[ \t]*(\S.{9,})/s;
 const CAMINHO = /(?<![\p{L}\p{N}_.:/~$-])\/(?:[\p{L}\p{N}_.@+%-]+\/)*[\p{L}\p{N}_.@+%-]+/gu;
 const CAMINHO_ENTRE_ASPAS = /(["'])(\/[^"'\n]+)\1/g;
+// Caminho sem aspas e com espaço (comum em mídia de WhatsApp): vai até a extensão; o statSync descarta o que não for arquivo.
+const CAMINHO_COM_ESPACO = /(?<![\p{L}\p{N}_.:/~$-])\/[^\n"'`]*?\.[\p{L}\p{N}]{2,5}(?=$|[\s,;:)])/gmu;
 const TABELA = /^\S+\[\d+\](?:\{[^}]*\})?:$/;
 const CHAVE_VALOR = /^[\w-]+:(?:\s|$)/;
 const STOPWORDS = new Set(['para', 'como', 'com', 'uma', 'umas', 'uns', 'que', 'por', 'dos', 'das', 'nos', 'nas', 'mais', 'esta', 'este', 'esse', 'essa', 'isso', 'isto', 'sobre', 'entre', 'ainda', 'quando', 'onde', 'voce', 'seu', 'sua', 'ele', 'ela', 'foi', 'ser', 'tem', 'sem', 'mas', 'pelo', 'pela', 'aos', 'ate', 'depois', 'antes', 'tambem', 'ja', 'nao', 'sim', 'todo', 'toda', 'cada', 'fazer', 'feito']);
@@ -54,7 +56,8 @@ function valoresDaFlag(texto, flag) {
 function caminhosDe(texto) {
   const entreAspas = [...texto.matchAll(CAMINHO_ENTRE_ASPAS)].map((m) => m[2]);
   const soltos = (texto.match(CAMINHO) ?? []).map((c) => c.replace(/[.,;:]+$/, ''));
-  return [...new Set([...entreAspas, ...soltos])].filter(ehArquivo);
+  const comEspaco = texto.match(CAMINHO_COM_ESPACO) ?? [];
+  return [...new Set([...entreAspas, ...soltos, ...comEspaco])].filter(ehArquivo);
 }
 
 // Destinos e nomes sempre entram; só os arquivos passam do teto, e o corte fica em `cortadas`.
@@ -124,7 +127,7 @@ function rodarConsulta(consulta, vars, tetoMs) {
 const ehEco = (linha, ecos) => ecos.some((e) => linha.replace(/^(["'])(.*)\1$/, '$2') === e || new RegExp(`^[\\w-]+:\\s*["']?${escapar(e)}["']?$`).test(linha));
 
 // Linhas candidatas: sem eco da busca nem cabeçalho TOON, com o destino ou ao menos um termo.
-export function linhasCandidatas(stdout, vars, ecos = []) {
+export function linhasCandidatas(stdout, vars, ecos = [], { filtrar = true } = {}) {
   const destino = vars.destino ? normalizar(vars.destino) : '';
   const termos = vars.termos.map(normalizar);
   let naTabela = false;
@@ -133,6 +136,7 @@ export function linhasCandidatas(stdout, vars, ecos = []) {
     if (TABELA.test(l)) return !(naTabela = true);
     return !(CHAVE_VALOR.test(l) && !naTabela) && !ehEco(l, ecos);
   }).filter((l) => {
+    if (!filtrar) return true;
     const n = normalizar(l);
     return (destino && n.includes(destino)) || termos.some((t) => n.includes(t));
   });
@@ -151,7 +155,12 @@ async function consultar(leitura, fontes, tetoMs, textoDaAcao) {
   const resultados = await Promise.all(aplicaveis.map((c) => rodarConsulta(c, vars, tetoMs)));
   const ecos = aplicaveis.flatMap((c) => c.comando.filter((a) => /\{(?:termos|destino)\}/.test(a)).map((a) => preencher(a, vars))).filter(Boolean);
   const candidatas = resultados.filter((r) => !r.indisponivel)
-    .flatMap((r) => linhasCandidatas(r.stdout, vars, ecos).map((linha) => ({ consulta: r.nome, linha: trecho(linha, 200), pontos: pontosDaLinha(linha, vars) })))
+    .flatMap((r) => {
+      // Consulta exata (filtrar: false, ex.: mesmo arquivo pelo hash) já responde sobre a ação: toda linha de dado vale e sobe primeiro.
+      const exata = aplicaveis.find((c) => c.nome === r.nome)?.filtrar === false;
+      return linhasCandidatas(r.stdout, vars, ecos, { filtrar: !exata })
+        .map((linha) => ({ consulta: r.nome, linha: trecho(linha, 200), pontos: pontosDaLinha(linha, vars) + (exata ? 10 : 0) }));
+    })
     .sort((a, b) => b.pontos - a.pontos)
     .slice(0, MAX_CANDIDATAS)
     .map(({ consulta, linha }) => ({ consulta, linha }));
@@ -224,7 +233,7 @@ export async function executar(entrada, deps = {}) {
   const bloquear = modoDaLei(config, lei.numero) === 'bloquear';
   registrar({ ...base, decisao: bloquear ? 'negada' : 'observada', duracao_ms: Date.now() - inicio, trecho: [...achados.map((a) => `${a.tipo}: ${a.fonte}`), ...(fontes.cortadas ? [`fontes_cortadas: ${fontes.cortadas}`] : [])].join('; ') });
   if (!bloquear) return null;
-  const motivo = `${nomeCompleto(lei)}: ${lei.regra} ${achados.map((a) => mascarar(a.texto)).join(' ')}${fontes.cortadas ? ` (fontes_cortadas: ${fontes.cortadas} arquivos além do teto não foram conferidos)` : ''} Para seguir mesmo assim, inclua no texto "LIDO: <o que você leu e concluiu>" (ao menos 10 caracteres).`;
+  const motivo = `${nomeCompleto(lei)}: ${lei.regra} ${achados.map((a) => (a.tipo === 'sem_leitura' ? a.texto : mascarar(a.texto))).join(' ')}${fontes.cortadas ? ` (fontes_cortadas: ${fontes.cortadas} arquivos além do teto não foram conferidos)` : ''} Para seguir mesmo assim, inclua no texto "LIDO: <o que você leu e concluiu>" (ao menos 10 caracteres).`;
   return saidaNegar(motivo);
 }
 
