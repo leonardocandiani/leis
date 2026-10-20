@@ -81,6 +81,7 @@ function errosDasConsultas(consultas) {
     if (!ehTexto(c.nome)) erros.push(`${onde}.nome ausente ou vazio`);
     if (!Array.isArray(c.comando) || c.comando.length === 0 || !ehListaDeTextos(c.comando)) erros.push(`${onde}.comando deve ser lista não vazia de textos`);
     if (c.quando !== undefined && !QUANDO_DA_CONSULTA.includes(c.quando)) erros.push(`${onde}.quando deve ser um de: ${QUANDO_DA_CONSULTA.join(', ')}`);
+    if (c.filtrar !== undefined && typeof c.filtrar !== 'boolean') erros.push(`${onde}.filtrar deve ser true ou false`);
     return erros;
   });
 }

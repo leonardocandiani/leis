@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { executar, linhasCandidatas, termosDe, textoLivre } from '../scripts/fiscal-leitura.mjs';
+import { executar, extrairFontes, linhasCandidatas, termosDe, textoLivre } from '../scripts/fiscal-leitura.mjs';
 import { executar as executarStop } from '../scripts/fiscal-resposta.mjs';
 import { validarEsquema } from '../scripts/leis.mjs';
 import { isolar, restaurar, configCom, jevFalso, jevProibido, registro } from './ajuda.mjs';
@@ -390,4 +390,39 @@ test('abaixo de 0,4 nem aviso nem registro', async () => {
   const saida = await executar(bash(ENVIO), { config: c, jev: jevFalso('achado', 'ja_feito', 0.3) });
   assert.equal(saida, null);
   assert.equal(registro().filter((e) => e.hook === 'fiscal-leitura').length, 0);
+});
+
+test('consulta com filtrar false manda ao JEV a linha sem termo em comum, à frente das outras', async () => {
+  const saidaExata = 'count: 1 anteriores\nanteriores[1]{data,conversa,caminho,casou_por}:\n  "19/10 14:29","Grupo X","/dados/a1.pdf","md5"';
+  const c = cfg('bloquear', { consultas: [
+    { ...consultaDe('oferta de 15h para Fulano'), nome: 'ruido' },
+    { ...consultaDe(saidaExata), nome: 'midia', filtrar: false },
+  ] });
+  const jev = jevFalso('achado', 'nenhum', 0.9);
+  await executar(bash(ENVIO), { config: c, jev });
+  const vistas = jev.chamadas[0].estado.evidencias;
+  assert.match(vistas[0], /a1\.pdf/);
+  assert.ok(!vistas.some((l) => /^count:/.test(l)));
+});
+
+test('config leitura: filtrar precisa ser booleano', () => {
+  const c = cfg('observar', { consultas: [{ nome: 'x', comando: ['x'], filtrar: 'nao' }] }).config;
+  assert.ok(validarEsquema(c).some((e) => /filtrar deve ser true ou false/.test(e)));
+});
+
+test('caminho sem aspas e com espaço até a extensão é fonte', () => {
+  mkdirSync(join(raiz, 'midia', 'documento'), { recursive: true });
+  const arq = join(raiz, 'midia', 'documento', 'REGULAMENTO ATUALIZADO _pdf.pdf');
+  writeFileSync(arq, 'x');
+  const fontes = extrairFontes(`Fontes:\n- PDF de 29 páginas: ${arq}\n- outra coisa`, {});
+  assert.deepEqual(fontes.filter((f) => f.tipo === 'arquivo').map((f) => f.fonte), [arq]);
+});
+
+test('sugestão de leitura mostra o caminho inteiro, sem máscara, para a sessão poder copiar', async () => {
+  mkdirSync(join(raiz, 'midia', '5511987654321_s'), { recursive: true });
+  const arq = join(raiz, 'midia', '5511987654321_s', 'doc.pdf');
+  writeFileSync(arq, 'x');
+  const entrada = { session_id: 's1', cwd: '/x/p', tool_name: 'SendMessage', tool_input: { message: `aplique ${arq}` }, transcript_path: transcript(prompt()) };
+  const saida = await executar(entrada, { config: cfg('bloquear') });
+  assert.ok(saida.hookSpecificOutput.permissionDecisionReason.includes(`Read ${arq}`));
 });
