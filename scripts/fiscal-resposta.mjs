@@ -80,7 +80,7 @@ export function instrucaoDeCorrecao(config, lei, vezes, seguidas = 1) {
   if (seguidas > 1) linhas.push(`É a ${seguidas}ª volta seguida neste turno e você ainda terminou pedindo. Não termine com pergunta, oferta nem pedido de aval: decida pelo padrão mais seguro e reversível, faça, e só pare com o resultado. Sobe ao dono apenas o que é dele (voz a terceiros, pagamento, credencial, dado de cliente), como uma única pergunta de sim ou não com o trabalho já pronto.`);
   if (vezes > 0) {
     const lei3 = troca ? ` (${nomeCompleto(troca)}: substitua a regra velha, não acumule)` : '';
-    linhas.push(`É a ${vezes + 1}ª quebra desta lei neste projeto em 7 dias. Antes de encerrar, grave o aprendizado na memória ou nas regras do projeto${lei3}, dizendo o que você fará diferente da próxima vez.`);
+    linhas.push(`É a ${vezes + 1}ª quebra desta lei neste projeto em 7 dias. Antes de encerrar, grave o aprendizado na memória ou nas regras do projeto${lei3}, dizendo o que você fará diferente da próxima vez. Se a mesma quebra se repete em outros projetos, o comando /leis-contribuir mostra se ela é erro do plugin.`);
   }
   return linhas.join(' ');
 }
