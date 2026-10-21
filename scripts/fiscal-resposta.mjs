@@ -7,7 +7,7 @@ import { nomeDoProjeto, principal, projetoTem } from './entrada.mjs';
 import { atualizarEstado, lerEstado } from './estado.mjs';
 import { carregarConfig, leiPorPapel, nomeCompleto } from './leis.mjs';
 import { comandosBash, leitorRegex, regexSeguro, turnoAtual } from './leitura.mjs';
-import { categoriasDe, padraoDaCategoria } from './aceite.mjs';
+import { categoriasDe, observarAceiteInverso, padraoDaCategoria } from './aceite.mjs';
 import { escalar } from './escalada.mjs';
 import { lerRegistro, registrar } from './registro.mjs';
 
@@ -178,6 +178,7 @@ export async function executar(entrada, deps = {}) {
     ?? (entrada.transcript_path ? (await import('./contexto.mjs')).ultimaRespostaDaSessao(entrada.transcript_path) : '');
   const saida = await conferirEscolha(entrada, texto, deps);
   await observarOmissaoDeLeitura(entrada, texto, deps);
+  if (!regraBarata(texto)) await observarAceiteInverso(entrada, texto, deps);
   return saida;
 }
 
