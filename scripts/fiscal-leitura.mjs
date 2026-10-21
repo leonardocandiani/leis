@@ -22,6 +22,12 @@ const AVISO_MINIMO = 0.4;
 const JEV_MINIMO_MS = 800;
 const FLAGS_IGNORADAS_PADRAO = ['--origem'];
 const MANUTENCAO = /(?:^|\s)--(?:substitui|cancelar)(?:[\s=]|$)/;
+
+// A flag só conta no segmento da própria saída e fora de aspas; um envio novo no mesmo comando segue consultado.
+function soManutencao(texto, saidas) {
+  const segmentos = texto.split(/\|\|?|&&|;|\n/).filter((s) => casaAlgum(saidas, s));
+  return segmentos.length > 0 && segmentos.every((s) => MANUTENCAO.test(s.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, ' ')));
+}
 const FLAGS_DE_TEXTO = new Set(['titulo', 'contexto', 'mensagem', 'texto', 'descricao', 'corpo', 'assunto', 'motivo', 'nota', 'message', 'title', 'body', 'text', 'description']);
 const HORARIO = /\b\d{1,2}(?:h(?:\d{2})?|:\d{2})(?!\w)/g;
 const DATA = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/g;
@@ -43,7 +49,7 @@ const casaAlgum = (padroes, texto) => (padroes ?? []).some((p) => regexSeguro(p)
 
 // Só vira fonte o arquivo que a sessão consegue e pode ler: binário de sistema, segredo (.env, o keyfence nega a leitura)
 // e mídia que o Read não abre (vídeo, áudio, compactado, banco) ficam de fora, senão a negação manda fazer o impossível.
-const PASTA_DE_SISTEMA = /^\/(?:bin|sbin|usr|System|Library|private\/var|dev|etc)\//;
+const PASTA_DE_SISTEMA = /^\/(?:bin|sbin|usr|System|dev|etc)\//;
 const ILEGIVEL = /(?:^|\/)\.env(?:\.[\w-]+)?$|\.(?:mp4|m4v|mov|webm|mkv|avi|mp3|m4a|ogg|opus|wav|aac|flac|zip|gz|tgz|zst|7z|rar|sqlite|db|wal)$/i;
 
 function ehArquivo(caminho) {
@@ -242,7 +248,7 @@ export async function executar(entrada, deps = {}) {
   const usos = fontes.length && entrada.transcript_path ? (deps.usosRecentes ?? usosRecentes)(entrada.transcript_path, deps.agora ?? Date.now()) : null;
   const teto = deps.tetoMs ?? TETO_CONSULTAS_MS;
   // Trocar ou cancelar um pedido mexe no que já existe por definição: perguntar se "já existe" só produz falso positivo.
-  const manutencao = nome === 'Bash' && MANUTENCAO.test(texto);
+  const manutencao = nome === 'Bash' && soManutencao(texto, leitura.saidas);
   const consultas = manutencao ? { indisponiveis: [], candidatas: [] } : await consultar(leitura, fontes, teto, textoLivre(nome, texto, leitura));
   for (const indisponivel of consultas.indisponiveis) registrar({ ...base, decisao: 'consulta_indisponivel', trecho: indisponivel });
 

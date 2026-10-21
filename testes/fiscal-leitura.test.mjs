@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { executar, extrairFontes, linhasCandidatas, termosDe, textoLivre } from '../scripts/fiscal-leitura.mjs';
 import { executar as executarStop } from '../scripts/fiscal-resposta.mjs';
@@ -427,12 +427,26 @@ test('sugestão de leitura mostra o caminho inteiro, sem máscara, para a sessã
   assert.ok(saida.hookSpecificOutput.permissionDecisionReason.includes(`Read ${arq}`));
 });
 
-test('arquivo que a própria sessão escreveu conta como lido: Write, Edit e cat > no Bash', async () => {
+test('arquivo que a própria sessão escreveu inteiro conta como lido: Write e heredoc com cat', async () => {
   const arq = arquivoReal('brief.md');
-  for (const escrita of [uso('Write', { file_path: arq, content: 'x' }), uso('Edit', { file_path: arq, old_string: 'a', new_string: 'b' }), uso('Bash', { command: `cat > ${arq} <<'FIM'\nx\nFIM` })]) {
+  for (const escrita of [uso('Write', { file_path: arq, content: 'x' }), uso('Bash', { command: `cat > ${arq} <<'FIM'\nx\nFIM` }), uso('Bash', { command: `cat <<'FIM' > ${arq}\nx\nFIM` })]) {
     const t = transcript(prompt(), escrita);
     assert.equal(await executar(enviar(`siga ${arq}`, { transcript_path: t }), { config: cfg('bloquear') }), null);
   }
+});
+
+test('edição parcial, saída de outro programa e acréscimo não contam como leitura', async () => {
+  const arq = arquivoReal('regras.md');
+  for (const escrita of [uso('Edit', { file_path: arq, old_string: 'a', new_string: 'b' }), uso('Bash', { command: `curl -s https://x > ${arq}` }), uso('Bash', { command: `echo x >> ${arq}` }), uso('Bash', { command: `echo x | tee -a ${arq}` })]) {
+    const t = transcript(prompt(), escrita);
+    assert.ok(negou(await executar(enviar(`siga ${arq}`, { transcript_path: t }), { config: cfg('bloquear') })));
+  }
+});
+
+test('arquivo de worktree temporária em /private/var continua fonte', () => {
+  const real = realpathSync(arquivoReal('plano.md'));
+  assert.ok(real.startsWith('/private/var/'), real);
+  assert.deepEqual(extrairFontes(`siga ${real}`, LEITURA).map((f) => f.fonte), [real]);
 });
 
 test('Agent e Workflow delegam a leitura do arquivo ao subagente; SendMessage não', async () => {
@@ -463,6 +477,16 @@ test('trocar ou cancelar pedido não consulta "já existe"', async () => {
   const t = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs Fulano' }));
   for (const flag of ['--substitui 14f0', '--cancelar 8b1a']) {
     assert.equal(await executar(bash(`${ENVIO} ${flag}`, { transcript_path: t }), { config: c, jev: jevProibido }), null);
+  }
+});
+
+test('flag de troca dentro de aspas ou noutro segmento não pula a consulta', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('enviado ontem para Fulano')] });
+  const t = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs Fulano' }));
+  for (const cmd of ['meu-envio texto --para Fulano --mensagem "use --cancelar para sair"', 'meu-cli pedido --cancelar 8b1a; meu-envio texto --para Fulano --mensagem "Podemos marcar às 15h?"']) {
+    const jev = jevFalso('achado', 'nenhum', 0.9);
+    await executar(bash(cmd, { transcript_path: t }), { config: c, jev });
+    assert.equal(jev.chamadas.length, 1);
   }
 });
 
