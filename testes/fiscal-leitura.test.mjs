@@ -507,3 +507,8 @@ test('JEV dividido entre já feito e já aberto soma as duas: 0,37 + 0,44 nega; 
   assert.ok(!negou(saida));
   assert.match(saida.hookSpecificOutput.additionalContext, /pode já ter sido feito/);
 });
+
+test('destino dispensado na config não pede leitura', () => {
+  const fontes = extrairFontes('meu-envio texto --para Dono --para Fulano', { ...LEITURA, destinos_dispensados: ['dono'] });
+  assert.deepEqual(fontes.map((f) => f.fonte), ['Fulano']);
+});

@@ -80,7 +80,9 @@ function caminhosDe(texto) {
 export function extrairFontes(texto, leitura = {}) {
   const alvo = normalizar(texto);
   const arquivos = caminhosDe(texto);
-  const destinos = [...new Set((leitura.flags_de_destino ?? []).flatMap((f) => valoresDaFlag(texto, f)))].filter(DESTINO_LEGIVEL);
+  // Destino dispensado: a conversa que a sessão já recebe pelo próprio canal (o privado do dono, por exemplo).
+  const dispensados = new Set((leitura.destinos_dispensados ?? []).map(normalizar));
+  const destinos = [...new Set((leitura.flags_de_destino ?? []).flatMap((f) => valoresDaFlag(texto, f)))].filter((d) => DESTINO_LEGIVEL(d) && !dispensados.has(normalizar(d)));
   const nomes = (leitura.nomes ?? []).filter((n) => new RegExp(`(?<![a-z0-9])${escapar(normalizar(n))}(?![a-z0-9])`).test(alvo));
   const fontes = [
     ...destinos.map((fonte) => ({ fonte, tipo: 'destino' })),
