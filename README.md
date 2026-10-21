@@ -148,6 +148,30 @@ Os modos valem para as ações de risco (`fiscal-acao`), onde negar tem custo re
 
 A autocorreção do Stop devolve a sessão até três vezes seguidas no mesmo turno, apertando a instrução a cada volta (decidir pelo padrão mais seguro e reversível, fazer e parar só com o resultado). A regra barata pega pergunta no fim, cardápio e também oferta sem ponto de interrogação ("se quiser, eu já subo", "aguardo seu ok", "é só me falar"). Passado o teto, a sessão para, a quebra vira pendência e o próximo prompt a reanima com "Na resposta anterior você quebrou a ..." e a ordem de gravar o aprendizado antes de seguir. Se o disco não grava a contagem, o teto vale na primeira volta, para nunca virar laço.
 
+### Aceite por categoria
+
+Perguntar ao dono só faz sentido quando a resposta dele não é previsível. Quando o `fiscal-resposta` vê uma pergunta no fim da resposta, o JEV diz também a categoria do que se pergunta (`tecnica`, `design`, `comercial`, `conteudo`, `outra`, ou as reservadas `voz_terceiro`, `pagamento`, `credencial`, `dado_cliente`). Se a pergunta chega a você, ela fica aberta, e a sua mensagem seguinte vira `aceitou`, `recusou` ou `ajustou` em `~/.claude/leis/aceites.jsonl` (só categoria e resposta, nunca o texto). Mensagem de outra sessão, aviso de tarefa e lembrete do sistema não contam.
+
+Nas últimas 10 respostas da categoria (com pelo menos 5):
+
+| Padrão | Quando | Efeito |
+|---|---|---|
+| `sempre_aceita` | 90% ou mais aceitas | perguntar quebra a S.I.M., mesmo com o JEV dizendo que não: a sessão volta e faz, e avisa depois |
+| `mantem_perguntando` | 50% ou menos aceitas | a pergunta passa, mesmo com o JEV apontando T.O.P. |
+| `misto` ou `aprendendo` | o resto | vale o veredito do JEV |
+
+As reservadas nunca viram `sempre_aceita`, nem com todos os aceites. Para trocar as categorias, ponha `aceite.categorias` (nome e descrição) no `leis.json`; `aceite.janela` e `aceite.minimo` mudam o tamanho da janela.
+
+### Dupla quebra
+
+Duas leis diferentes quebradas no mesmo turno são o sinal de que a sessão perdeu o rumo. O registro ganha uma linha do hook `escalada` com as duas siglas (`T.O.P.+J.Á.`). Em `observar`, o padrão, é só isso. Em `pausar`, o hook encerra o turno (`continue: false`) com o motivo e roda o seu comando de aviso; a sua próxima mensagem retoma a sessão, que nunca é desligada:
+
+```json
+{ "escalada": { "modo": "pausar", "aviso": ["meu-aviso", "--texto", "{mensagem}"] } }
+```
+
+O aviso tem teto de 3 s e nunca derruba o hook.
+
 Todo hook falha aberto e sai com código 0: erro do plugin nunca derruba a sua sessão. O caso que não casa não usa rede e custa cerca de 50 ms (um processo Node).
 
 ## Comandos
@@ -155,12 +179,43 @@ Todo hook falha aberto e sai com código 0: erro do plugin nunca derruba a sua s
 | Comando | Para que serve |
 |---|---|
 | `/leis:leis-implantar` | cria a config e o ponteiro no `CLAUDE.md` global |
-| `/leis:leis-validar` | confere config, hooks ativos, chave do JEV, JEV respondendo em menos de 3 s e registro gravável (exit 0 ou 1) |
+| `/leis:leis-validar` | confere config, hooks ativos, chave do JEV, JEV respondendo em menos de 3 s e registro gravável (exit 0 ou 1), e mostra a curva de quebras |
+| `/leis:leis-contribuir` | mostra as quebras que se repetem em vários projetos e, só se você pedir, abre um PR com elas neste repositório |
 | `/leis:leis-auditar` | o agente `auditor-leis` lê os transcripts das últimas 24 h (ou do período pedido) atrás de quebras |
 | `/leis:leis-medir` | por lei e natureza, 24 h e 7 d: registradas, bloqueadas, observadas, JEV fora, mediana e p95 |
 | `/leis:leis-nova` | cria uma lei nova no molde e atualiza a config |
 
 `node scripts/validar.mjs` e `node scripts/medir.mjs` rodam fora do Claude Code, com a mesma saída (TOON).
+
+**Curva de aprendizado.** O `validar` termina com as quebras distintas por hora desde a instalação: hora a hora nas primeiras 24 h, depois dia a dia, com a versão do plugin em cada janela. A mesma lei quebrada de novo na mesma sessão em menos de 15 min conta uma vez. A tendência compara as últimas 24 h com a taxa de antes delas (`caindo`, `estável`, `subindo`). Queda junto de troca de versão pode ser só falso positivo que saiu; queda na mesma versão é a sessão aprendendo.
+
+**Casos para o repositório.** Quebra que aparece 3 vezes ou mais em 2 projetos ou mais é erro do plugin, não do projeto. `node scripts/contribuir.mjs` lista esses casos (modo seco, o padrão); `--abrir-pr --repo <clone>` grava `docs/casos/` e abre o PR. O caso leva só o papel da lei, o sinal do fiscal, contagens, versões e datas, e o script recusa com `code: HIGIENE` texto com caminho, e-mail, identificador de mensagem ou número longo, e com `code: SUJO` um clone com alteração pendente.
+
+## Levar as leis a outro agente
+
+O plugin é do Claude Code, mas as leis valem para qualquer agente que tenha um prompt e um ponto onde conferir a resposta antes de ela sair (um agente de WhatsApp, um assistente com ferramentas próprias). São duas peças.
+
+**O prompt.** O `leis.json` já é o texto: para cada lei, a sigla, a regra, o teste e a correção. Cole no prompt do sistema do agente, nesta forma:
+
+```
+Você trabalha sob seis leis. Antes de responder, aplique o teste de cada uma.
+- T.O.P. (Tudo Ordenado e Pronto): <regra>. Teste: <teste>
+- S.I.M. (Sem Insistir no Mesmo): <regra>. Teste: <teste>
+...
+Se uma resposta quebra uma lei, corrija antes de enviar: <correção de cada lei>.
+```
+
+`node scripts/gerar-rule.mjs --seco` imprime a mesma coisa em markdown, pronta para colar.
+
+**O fiscal.** Cada hook é um contrato de entrada e saída em JSON, e o agente chama o script do mesmo jeito que o Claude Code chama:
+
+| Momento no agente | Script | Entrada (stdin) | Saída (stdout) |
+|---|---|---|---|
+| resposta pronta, antes de enviar | `fiscal-resposta.mjs` | `{session_id, cwd, last_assistant_message}` | vazio passa; `{decision: "block", reason}` manda reescrever com `reason` |
+| antes de uma ação | `fiscal-acao.mjs` e `fiscal-leitura.mjs` | `{session_id, cwd, tool_name, tool_input, transcript_path}` | vazio passa; `hookSpecificOutput.permissionDecision: "deny"` nega com o motivo |
+| mensagem nova do dono | `relato.mjs` | `{session_id, cwd, prompt}` | `hookSpecificOutput.additionalContext` vai junto da mensagem ao modelo |
+
+Sem `transcript_path`, o fiscal da L.I.D.A. e a dupla quebra não rodam (não há turno para conferir); o resto funciona. A chave do JEV é a mesma (`AI_GATEWAY_API_KEY` ou `TYPESAFE_API_KEY`), e o registro, o aceite, a curva e o `contribuir` funcionam igual, porque leem o mesmo `~/.claude/leis/` (ou `LEIS_HOME`).
 
 ## Escrever uma lei nova
 
@@ -178,7 +233,7 @@ Campos opcionais do `leis.json`: por lei, `aplicacao` (lista de frases de "como 
 
 ## Privacidade
 
-Cada evento vira uma linha em `~/.claude/leis/registro.jsonl`: `ts`, `maquina`, `sessao`, `projeto`, `hook`, `lei`, `natureza` (`acao`, `omissao`, `trava`, `relato`), `decisao`, `prob`, `duracao_ms` e um trecho de até 200 caracteres.
+Cada evento vira uma linha em `~/.claude/leis/registro.jsonl`: `ts`, `maquina`, `sessao`, `projeto`, `hook`, `lei`, `natureza` (`acao`, `omissao`, `trava`, `relato`), `decisao`, `sinal` (a regra ou o achado que disparou), `prob`, `duracao_ms`, a `versao` do plugin e um trecho de até 200 caracteres. O aceite por categoria grava em `aceites.jsonl` só `ts`, `categoria`, `resposta`, `sessao` e `projeto`.
 
 - O registro fica na sua máquina e nunca é enviado.
 - Token, e-mail e telefone saem mascarados antes de gravar.

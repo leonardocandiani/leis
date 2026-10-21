@@ -7,6 +7,8 @@ import { nomeDoProjeto, principal, projetoTem } from './entrada.mjs';
 import { atualizarEstado, lerEstado } from './estado.mjs';
 import { carregarConfig, leiPorPapel, nomeCompleto } from './leis.mjs';
 import { comandosBash, leitorRegex, regexSeguro, turnoAtual } from './leitura.mjs';
+import { categoriasDe, padraoDaCategoria } from './aceite.mjs';
+import { escalar } from './escalada.mjs';
 import { lerRegistro, registrar } from './registro.mjs';
 
 const PAPEL_DA_ESCOLHA = { top: 'pronto', sim: 'sim' };
@@ -42,11 +44,16 @@ async function julgar(config, entrada, texto, sinal, deps) {
   const criterios = { nenhuma: 'a resposta entrega o resultado ou faz uma pergunta que só o dono pode responder' };
   if (top) criterios.top = `${top.sigla}: ${top.regra} Quebra quando a resposta termina pedindo decisão ou escolha que a sessão resolvia sozinha, ou entrega cardápio em vez de executar.`;
   if (sim) criterios.sim = `${sim.sigla}: ${sim.regra} Quebra quando a resposta repete uma pergunta que o dono já respondeu antes na conversa.`;
-  const perguntas = { quebra: { type: 'choice', instructions: 'Confira a última resposta da sessão (campo resposta_final) contra as leis. Escolha "nenhuma" na dúvida.', criteria: criterios } };
+  const categorias = categoriasDe(config);
+  const perguntas = {
+    quebra: { type: 'choice', instructions: 'Confira a última resposta da sessão (campo resposta_final) contra as leis. Escolha "nenhuma" na dúvida.', criteria: criterios },
+    categoria: { type: 'choice', instructions: 'De que categoria é o que a sessão pergunta ou pede ao dono no fim da resposta?', criteria: categorias },
+  };
   const estado = montarEstado({ entrada, leis: [top, sim].filter(Boolean), extra: { resposta_final: texto.slice(-1500), sinal_da_regra_barata: sinal } });
   const inicio = Date.now();
   const respostas = await (deps.jev ?? perguntar)(estado, perguntas, { extras: config.jev?.arquivos_chave ?? [] });
-  return { veredito: escolha(respostas, 'quebra', criterios), duracao: Date.now() - inicio };
+  const categoria = escolha(respostas, 'categoria', categorias);
+  return { veredito: escolha(respostas, 'quebra', criterios), categoria: (categoria?.confianca ?? 1) >= CONFIANCA_MINIMA ? categoria?.escolha : undefined, duracao: Date.now() - inicio };
 }
 
 // stop_hook_active diz se o turno já foi devolvido por um Stop; o estado conta quantas vezes. Turno novo zera.
@@ -73,10 +80,26 @@ export function instrucaoDeCorrecao(config, lei, vezes, seguidas = 1) {
   if (seguidas > 1) linhas.push(`É a ${seguidas}ª volta seguida neste turno e você ainda terminou pedindo. Não termine com pergunta, oferta nem pedido de aval: decida pelo padrão mais seguro e reversível, faça, e só pare com o resultado. Sobe ao dono apenas o que é dele (voz a terceiros, pagamento, credencial, dado de cliente), como uma única pergunta de sim ou não com o trabalho já pronto.`);
   if (vezes > 0) {
     const lei3 = troca ? ` (${nomeCompleto(troca)}: substitua a regra velha, não acumule)` : '';
-    linhas.push(`É a ${vezes + 1}ª quebra desta lei neste projeto em 7 dias. Antes de encerrar, grave o aprendizado na memória ou nas regras do projeto${lei3}, dizendo o que você fará diferente da próxima vez.`);
+    linhas.push(`É a ${vezes + 1}ª quebra desta lei neste projeto em 7 dias. Antes de encerrar, grave o aprendizado na memória ou nas regras do projeto${lei3}, dizendo o que você fará diferente da próxima vez. Se a mesma quebra se repete em outros projetos, o comando /leis-contribuir mostra se ela é erro do plugin.`);
   }
   return linhas.join(' ');
 }
+
+// O histórico de aceite do dono decide antes do JEV: categoria que ele recusa mantém a pergunta, categoria que ele
+// sempre aceita faz da pergunta uma quebra da S.I.M. Reservada (voz a terceiro, pagamento, credencial, dado de cliente)
+// nunca vira quebra por aceite. Sem histórico suficiente, vale o veredito do JEV.
+function leiPeloAceite(config, veredito, categoria, leis) {
+  const aceite = padraoDaCategoria(config, categoria);
+  // Recusar a categoria libera a pergunta (T.O.P.), nunca a pergunta repetida que ele já respondeu (S.I.M.).
+  if (aceite.padrao === 'mantem_perguntando' && veredito.escolha !== 'sim') return { lei: null, aceite };
+  if (aceite.padrao === 'sempre_aceita' && leis.sim) return { lei: leis.sim, aceite };
+  const lei = leis[veredito.escolha];
+  return { lei: lei && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA ? lei : null, aceite };
+}
+
+const notaDoAceite = (categoria, aceite) => (aceite.padrao === 'sempre_aceita'
+  ? `O dono aceitou ${aceite.aceitas} dos últimos ${aceite.total} pedidos desta categoria (${categoria}): faça e avise depois, sem perguntar.`
+  : null);
 
 async function conferirEscolha(entrada, texto, deps) {
   const sessao = entrada.session_id ?? 'sem-sessao';
@@ -87,23 +110,27 @@ async function conferirEscolha(entrada, texto, deps) {
   const { top, sim } = leisDoFiscal(config);
   if (!top && !sim) return null;
   const base = { sessao, projeto: nomeDoProjeto(entrada), hook: 'fiscal-resposta', natureza: 'acao', trecho: texto.slice(-300) };
-  const { veredito, duracao } = await julgar(config, entrada, texto, sinal, deps);
+  const { veredito, categoria, duracao } = await julgar(config, entrada, texto, sinal, deps);
   if (!veredito) return passar({ ...base, decisao: 'jev_indisponivel', duracao_ms: duracao });
 
-  const lei = { top, sim }[veredito.escolha];
-  const quebrou = lei && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA;
-  if (!quebrou) {
-    atualizarEstado(sessao, { bloqueios_seguidos: 0 });
-    return passar({ ...base, decisao: 'passou', prob: veredito.confianca, duracao_ms: duracao });
+  const { lei, aceite } = leiPeloAceite(config, veredito, categoria, { top, sim });
+  // A pergunta que chega ao dono fica aberta com a categoria: a fala seguinte dele ensina o padrão (aceite.mjs).
+  const aberta = categoria ? { categoria, trecho: texto.slice(-600) } : null;
+  if (!lei) {
+    atualizarEstado(sessao, { bloqueios_seguidos: 0, pergunta_aberta: aberta });
+    return passar({ ...base, decisao: 'passou', sinal: `${sinal}+${aceite.padrao}`, prob: veredito.confianca, duracao_ms: duracao });
   }
   const vezes = reincidencias(base.projeto, lei.sigla);
   let { decisao, bloqueios } = decidir({ estado: lerEstado(sessao), entrada });
-  const gravou = atualizarEstado(sessao, { bloqueios_seguidos: bloqueios, pendente: decisao === 'bloqueada' ? null : lei.numero });
+  const bloqueada = decisao === 'bloqueada';
+  const gravou = atualizarEstado(sessao, { bloqueios_seguidos: bloqueios, pendente: bloqueada ? null : lei.numero, pergunta_aberta: bloqueada ? null : aberta });
   // Sem contagem gravada, stop_hook_active nunca passaria de 1 e o bloqueio viraria laço.
   if (!gravou && entrada.stop_hook_active === true) decisao = 'teto';
-  registrar({ ...base, lei: lei.sigla, decisao, prob: veredito.confianca, duracao_ms: duracao });
-  const aviso = instrucaoDeCorrecao(config, lei, vezes, bloqueios);
-  return decisao === 'bloqueada' ? { decision: 'block', reason: aviso } : { systemMessage: `[leis] ${aviso}` };
+  const sinalDaQuebra = aceite.padrao === 'sempre_aceita' ? 'aceite_sempre' : sinal;
+  registrar({ ...base, lei: lei.sigla, decisao, sinal: sinalDaQuebra, prob: veredito.confianca, duracao_ms: duracao });
+  const aviso = [instrucaoDeCorrecao(config, lei, vezes, bloqueios), notaDoAceite(categoria, aceite)].filter(Boolean).join(' ');
+  const saida = decisao === 'bloqueada' ? { decision: 'block', reason: aviso } : { systemMessage: `[leis] ${aviso}` };
+  return escalar(saida, { entrada, config, lei, projeto: base.projeto }, deps);
 }
 
 async function julgarOmissaoDeLeitura(config, lei, entrada, texto, deps) {
