@@ -88,6 +88,21 @@ test('categoria que o dono recusa mantém a pergunta, mesmo com o JEV apontando 
   assert.match(registro()[0].sinal, /mantem_perguntando/);
 });
 
+test('categoria recusada não libera a pergunta repetida (S.I.M.)', async () => {
+  historico('design', vezes(6, 'recusou'));
+  const saida = await stop(fim('Já te perguntei: prefere escuro ou claro?'), { config: config(), jev: jevCom({ quebra: 'sim', categoria: 'design' }) });
+  assert.equal(saida.decision, 'block');
+});
+
+test('aceite com mínimo acima da janela reprova a config', async () => {
+  const { validarEsquema } = await import('../scripts/leis.mjs');
+  const c = config().config;
+  c.aceite = { janela: 5, minimo: 10 };
+  assert.ok(validarEsquema(c).some((e) => /aceite.minimo não pode passar/.test(e)));
+  c.aceite = { minimo: 3 };
+  assert.ok(!validarEsquema(c).some((e) => /aceite/.test(e)));
+});
+
 test('reservada e sem histórico seguem o veredito do JEV', async () => {
   historico('pagamento', vezes(10, 'aceitou'));
   assert.equal(await stop(fim('O boleto está pronto. Posso pagar?'), { config: config(), jev: jevCom({ quebra: 'nenhuma', categoria: 'pagamento' }) }), null);

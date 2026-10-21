@@ -189,7 +189,7 @@ Todo hook falha aberto e sai com código 0: erro do plugin nunca derruba a sua s
 
 **Curva de aprendizado.** O `validar` termina com as quebras distintas por hora desde a instalação: hora a hora nas primeiras 24 h, depois dia a dia, com a versão do plugin em cada janela. A mesma lei quebrada de novo na mesma sessão em menos de 15 min conta uma vez. A tendência compara as últimas 24 h com a taxa de antes delas (`caindo`, `estável`, `subindo`). Queda junto de troca de versão pode ser só falso positivo que saiu; queda na mesma versão é a sessão aprendendo.
 
-**Casos para o repositório.** Quebra que aparece 3 vezes ou mais em 2 projetos ou mais é erro do plugin, não do projeto. `node scripts/contribuir.mjs` lista esses casos (modo seco, o padrão); `--abrir-pr --repo <clone>` grava `docs/casos/` e abre o PR. O caso leva só o papel da lei, o sinal do fiscal, contagens, versões e datas, e o script recusa com `code: HIGIENE` texto com caminho, e-mail, identificador de mensagem ou número longo.
+**Casos para o repositório.** Quebra que aparece 3 vezes ou mais em 2 projetos ou mais é erro do plugin, não do projeto. `node scripts/contribuir.mjs` lista esses casos (modo seco, o padrão); `--abrir-pr --repo <clone>` grava `docs/casos/` e abre o PR. O caso leva só o papel da lei, o sinal do fiscal, contagens, versões e datas, e o script recusa com `code: HIGIENE` texto com caminho, e-mail, identificador de mensagem ou número longo, e com `code: SUJO` um clone com alteração pendente.
 
 ## Levar as leis a outro agente
 

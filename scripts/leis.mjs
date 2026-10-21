@@ -115,6 +115,8 @@ function errosDoAceite(aceite) {
   const erros = [];
   if (aceite.categorias !== undefined && (!aceite.categorias || typeof aceite.categorias !== 'object' || Array.isArray(aceite.categorias) || !Object.values(aceite.categorias).every(ehTexto))) erros.push('aceite.categorias deve mapear nome para descrição');
   for (const campo of ['minimo', 'janela']) if (aceite[campo] !== undefined && !(Number.isInteger(aceite[campo]) && aceite[campo] > 0)) erros.push(`aceite.${campo} deve ser inteiro positivo`);
+  // Com mínimo acima da janela a categoria nunca sai de "aprendendo": o aceite ficaria desligado em silêncio.
+  if (!erros.length && (aceite.minimo ?? 5) > (aceite.janela ?? 10)) erros.push('aceite.minimo não pode passar de aceite.janela');
   return erros;
 }
 

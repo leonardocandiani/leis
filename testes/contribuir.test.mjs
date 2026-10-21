@@ -17,6 +17,10 @@ test('vira caso só a quebra com 3+ vezes em 2+ projetos, pelo papel da lei e nu
   assert.deepEqual(lista[0], { papel: 'pronto', sinal: 'cardapio', hook: 'fiscal-resposta', vezes: 3, projetos: 2, versoes: '0.3.0', primeira: '2026-10-01', ultima: '2026-10-01' });
 });
 
+test('evento sem projeto não conta como segundo projeto', () => {
+  assert.equal(candidatos([quebra(0), quebra(1), quebra(2, { projeto: undefined })], modelo()).length, 0);
+});
+
 test('sinal fora do formato seguro e lei desconhecida não saem', () => {
   const lista = candidatos([quebra(0, { sinal: 'cat /x/y' }), quebra(1, { sinal: 'cat /x/y', projeto: 'b' }), quebra(2, { sinal: 'cat /x/y' }), quebra(3, { lei: 'X.Y.' }), quebra(4, { lei: 'X.Y.', projeto: 'b' }), quebra(5, { lei: 'X.Y.' })], modelo());
   assert.deepEqual(lista.map((c) => c.sinal), ['sem_sinal']);
@@ -44,8 +48,11 @@ test('abrir PR: recusa pasta que não é o repositório e grava só os casos no 
   mkdirSync(join(fora, '.claude-plugin'));
   writeFileSync(join(fora, '.claude-plugin', 'plugin.json'), '{}');
   const chamadas = [];
-  const r = abrirPr(lista, fora, { git: (_r, ...a) => chamadas.push(['git', ...a]), gh: (a) => (chamadas.push(['gh', ...a]), 'https://exemplo/pr/1') });
+  const sujo = { git: (_r, cmd) => (cmd === 'status' ? ' M README.md' : ''), gh: () => assert.fail('não devia abrir PR') };
+  assert.equal(abrirPr(lista, fora, sujo).code, 'SUJO');
+  const r = abrirPr(lista, fora, { git: (_r, ...a) => (chamadas.push(['git', ...a]), ''), gh: (a) => (chamadas.push(['gh', ...a]), 'https://exemplo/pr/1') });
   assert.equal(r.url, 'https://exemplo/pr/1');
-  assert.deepEqual(chamadas.map((c) => c[1]), ['checkout', 'add', 'commit', 'push', 'pr']);
+  assert.deepEqual(chamadas.map((c) => c[1]), ['status', 'checkout', 'add', 'commit', 'push', 'pr']);
+  assert.deepEqual(chamadas[3].slice(-2), ['--', join('docs', 'casos', 'pronto-cardapio-fiscal-resposta.md')]);
   assert.match(readFileSync(join(fora, 'docs', 'casos', 'pronto-cardapio-fiscal-resposta.md'), 'utf8'), /quebras distintas: 3, em 2 projetos/);
 });

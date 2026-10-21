@@ -90,7 +90,8 @@ export function instrucaoDeCorrecao(config, lei, vezes, seguidas = 1) {
 // nunca vira quebra por aceite. Sem histórico suficiente, vale o veredito do JEV.
 function leiPeloAceite(config, veredito, categoria, leis) {
   const aceite = padraoDaCategoria(config, categoria);
-  if (aceite.padrao === 'mantem_perguntando') return { lei: null, aceite };
+  // Recusar a categoria libera a pergunta (T.O.P.), nunca a pergunta repetida que ele já respondeu (S.I.M.).
+  if (aceite.padrao === 'mantem_perguntando' && veredito.escolha !== 'sim') return { lei: null, aceite };
   if (aceite.padrao === 'sempre_aceita' && leis.sim) return { lei: leis.sim, aceite };
   const lei = leis[veredito.escolha];
   return { lei: lei && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA ? lei : null, aceite };

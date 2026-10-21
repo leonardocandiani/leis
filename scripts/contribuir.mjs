@@ -34,7 +34,8 @@ export function candidatos(eventos, config) {
     const chave = `${papel}|${sinal}|${e.hook}`;
     const g = grupos.get(chave) ?? { papel, sinal, hook: e.hook, vezes: 0, projetos: new Set(), versoes: new Set(), primeira: e.ts, ultima: e.ts };
     g.vezes += 1;
-    g.projetos.add(e.projeto ?? '?');
+    // Projeto desconhecido não prova que a quebra saiu do mesmo projeto: fica fora da contagem.
+    if (e.projeto) g.projetos.add(e.projeto);
     if (e.versao) g.versoes.add(e.versao);
     g.ultima = e.ts;
     grupos.set(chave, g);
@@ -80,12 +81,14 @@ export function abrirPr(lista, repo, exec = { git, gh: (args, cwd) => execFileSy
   const arquivos = lista.map((c) => ({ caminho: join('docs', 'casos', nomeDoCaso(c)), texto: textoDoCaso(c) }));
   const sujos = arquivos.filter((a) => conferirHigiene(a.texto).length);
   if (sujos.length) return { erro: `caso com dado que não pode sair: ${sujos.map((a) => a.caminho).join(', ')}`, code: 'HIGIENE' };
+  // O commit leva o índice inteiro: clone com alteração pendente vazaria para o PR público sem passar pela higiene.
+  if (exec.git(repo, 'status', '--porcelain')) return { erro: `${repo} tem alteração pendente; use um clone limpo`, code: 'SUJO' };
   const ramo = `casos/${new Date().toISOString().slice(0, 10)}-${process.pid}`;
   exec.git(repo, 'checkout', '-b', ramo, 'origin/main');
   mkdirSync(join(repo, 'docs', 'casos'), { recursive: true });
   for (const a of arquivos) writeFileSync(join(repo, a.caminho), a.texto);
   exec.git(repo, 'add', ...arquivos.map((a) => a.caminho));
-  exec.git(repo, 'commit', '-m', `docs(casos): ${arquivos.length} quebras repetidas em vários projetos`);
+  exec.git(repo, 'commit', '-m', `docs(casos): ${arquivos.length} quebras repetidas em vários projetos`, '--', ...arquivos.map((a) => a.caminho));
   exec.git(repo, 'push', '-u', 'origin', ramo);
   const corpo = `Quebras que se repetem em ${MINIMO_PROJETOS} ou mais projetos, geradas por \`contribuir.mjs\`. Só estrutura: papel da lei, sinal do fiscal e contagens.\n\n${arquivos.map((a) => `- ${a.caminho}`).join('\n')}`;
   return { url: exec.gh(['pr', 'create', '--title', `docs(casos): ${arquivos.length} quebras repetidas`, '--body', corpo, '--head', ramo], repo) };
