@@ -135,13 +135,15 @@ export async function observarAceiteInverso(entrada, texto, deps = {}) {
     const turno = (deps.turnoAtual ?? turnoAtual)(entrada.transcript_path);
     const acoes = (turno?.usos ?? []).filter((u) => !SO_LEITURA.has(u.nome)).map(resumoDaAcao);
     if (!acoes.length || lerEstado(entrada.session_id).inverso_turno === turno.id) return;
-    atualizarEstado(entrada.session_id, { inverso_turno: turno.id });
     const { registrar } = await import('./registro.mjs');
     const base = { sessao: entrada.session_id, projeto: entrada.cwd?.split('/').pop(), hook: 'fiscal-resposta', natureza: 'acao', sinal: 'aceite_inverso', trecho: String(texto).slice(-300) };
     const { veredito, duracao } = await julgarInverso(config, recusadas, acoes, texto, deps);
-    if (!veredito) return registrar({ ...base, decisao: 'jev_indisponivel', duracao_ms: duracao });
-    const quebrou = veredito.escolha !== 'nenhuma' && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA;
-    registrar({ ...base, lei: quebrou ? lei.sigla : undefined, decisao: quebrou ? DECISAO_ACEITE_INVERSO : 'passou', sinal: quebrou ? `aceite_inverso+${veredito.escolha}` : 'aceite_inverso', prob: veredito.confianca, duracao_ms: duracao });
+    const quebrou = !!veredito && veredito.escolha !== 'nenhuma' && (veredito.confianca ?? 1) >= CONFIANCA_MINIMA;
+    const decisao = !veredito ? 'jev_indisponivel' : quebrou ? DECISAO_ACEITE_INVERSO : 'passou';
+    // O turno só é dado por julgado depois do registro gravado: falha no meio deixa o próximo Stop tentar de novo.
+    if (registrar({ ...base, lei: quebrou ? lei.sigla : undefined, decisao, sinal: quebrou ? `aceite_inverso+${veredito.escolha}` : 'aceite_inverso', prob: veredito?.confianca, duracao_ms: duracao })) {
+      atualizarEstado(entrada.session_id, { inverso_turno: turno.id });
+    }
   } catch {
     // observação nunca derruba o Stop
   }
