@@ -445,7 +445,7 @@ test('edição parcial, saída de outro programa e acréscimo não contam como l
 
 test('arquivo de worktree temporária em /private/var continua fonte', () => {
   const real = realpathSync(arquivoReal('plano.md'));
-  assert.ok(real.startsWith('/private/var/'), real);
+  if (process.platform === 'darwin') assert.ok(real.startsWith('/private/var/'), real);
   assert.deepEqual(extrairFontes(`siga ${real}`, LEITURA).map((f) => f.fonte), [real]);
 });
 
