@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // UserPromptSubmit: quando o dono corrige citando lei, descobre qual foi quebrada, registra e injeta a correção.
+import { capturarAceite } from './aceite.mjs';
 import { saidaContexto, nomeDoProjeto, principal } from './entrada.mjs';
 import { atualizarEstado, lerEstado } from './estado.mjs';
 import { carregarConfig, leiPorNumero, leisCitadas, nomeCompleto, normalizar } from './leis.mjs';
@@ -68,7 +69,7 @@ function consumirPendencia(config, sessao) {
 export async function executar(entrada, deps = {}) {
   const { config, aviso } = deps.config ?? carregarConfig();
   const nota = consumirPendencia(config, entrada.session_id ?? 'sem-sessao');
-  const saida = await analisar(entrada, config, aviso, deps);
+  const [saida] = await Promise.all([analisar(entrada, config, aviso, deps), capturarAceite(entrada, config, deps)]);
   const corpo = [nota, saida?.hookSpecificOutput.additionalContext].filter(Boolean).join('\n');
   return corpo ? saidaContexto('UserPromptSubmit', corpo) : null;
 }
