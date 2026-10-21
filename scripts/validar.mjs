@@ -9,6 +9,8 @@ import { opcoesOuSair } from './cli.mjs';
 import { ehPrincipal } from './entrada.mjs';
 import { carregarConfig, casaDoUsuario } from './leis.mjs';
 import { chaveDisponivel, perguntar } from './jev.mjs';
+import { curva } from './curva.mjs';
+import { lerRegistro } from './registro.mjs';
 import { tabela } from './toon.mjs';
 
 const RAIZ = fileURLToPath(new URL('..', import.meta.url));
@@ -82,14 +84,23 @@ export async function validar(deps = {}) {
   return [...conferirConfig(), hooksDoPluginExistem(), hooksAtivos(claudeDir), ...jev, conferirRegistro()];
 }
 
-export function paraToon(itens) {
+// A curva é informação, não item de aprovação: sem registro ainda, ela simplesmente não aparece.
+export function curvaParaToon(c) {
+  if (!c) return 'curva: sem registro ainda (nenhum hook rodou desde a instalação)';
+  return [
+    `curva: ${c.total} quebras distintas desde ${c.instalacao.slice(0, 16).replace('T', ' ')} UTC; ${c.ultimas24} nas últimas 24 h (${c.por_hora_24h}/h); tendência ${c.tendencia}`,
+    tabela('curva', ['janela', 'quebras', 'por_hora', 'versao', 'troca'], c.linhas),
+  ].join('\n');
+}
+
+export function paraToon(itens, c) {
   const aprovado = itens.every((i) => i.estado !== 'falha');
-  return [`resultado: ${aprovado ? 'pass' : 'fail'}`, tabela('itens', ['item', 'estado', 'detalhe'], itens), aprovado ? 'help: node scripts/medir.mjs mostra o que os hooks registraram' : 'help: corrija os itens em falha e rode de novo'].join('\n');
+  return [`resultado: ${aprovado ? 'pass' : 'fail'}`, tabela('itens', ['item', 'estado', 'detalhe'], itens), ...(c === undefined ? [] : [curvaParaToon(c)]), aprovado ? 'help: node scripts/medir.mjs mostra o que os hooks registraram' : 'help: corrija os itens em falha e rode de novo'].join('\n');
 }
 
 if (ehPrincipal(import.meta.url)) {
-  opcoesOuSair({}, 'Confere se as leis estão implantadas (config, hooks, chave do JEV, JEV, registro).\n\nUso: node validar.mjs [--help]\n\nExemplos (examples):\n  node validar.mjs\n\nSaída TOON; exit 0 sem falha, 1 com falha, 2 em erro de uso.');
+  opcoesOuSair({}, 'Confere se as leis estão implantadas (config, hooks, chave do JEV, JEV, registro) e mostra a curva de quebras por hora desde a instalação.\n\nUso: node validar.mjs [--help]\n\nExemplos (examples):\n  node validar.mjs\n\nSaída TOON; exit 0 sem falha, 1 com falha, 2 em erro de uso.');
   const itens = await validar();
-  process.stdout.write(`${paraToon(itens)}\n`);
+  process.stdout.write(`${paraToon(itens, curva(lerRegistro(0)))}\n`);
   process.exitCode = itens.some((i) => i.estado === 'falha') ? 1 : 0;
 }
