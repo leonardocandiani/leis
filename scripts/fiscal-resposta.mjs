@@ -7,6 +7,7 @@ import { nomeDoProjeto, principal, projetoTem } from './entrada.mjs';
 import { atualizarEstado, lerEstado } from './estado.mjs';
 import { carregarConfig, leiPorPapel, nomeCompleto } from './leis.mjs';
 import { comandosBash, leitorRegex, regexSeguro, turnoAtual } from './leitura.mjs';
+import { escalar } from './escalada.mjs';
 import { lerRegistro, registrar } from './registro.mjs';
 
 const PAPEL_DA_ESCOLHA = { top: 'pronto', sim: 'sim' };
@@ -101,9 +102,10 @@ async function conferirEscolha(entrada, texto, deps) {
   const gravou = atualizarEstado(sessao, { bloqueios_seguidos: bloqueios, pendente: decisao === 'bloqueada' ? null : lei.numero });
   // Sem contagem gravada, stop_hook_active nunca passaria de 1 e o bloqueio viraria laço.
   if (!gravou && entrada.stop_hook_active === true) decisao = 'teto';
-  registrar({ ...base, lei: lei.sigla, decisao, prob: veredito.confianca, duracao_ms: duracao });
+  registrar({ ...base, lei: lei.sigla, decisao, sinal, prob: veredito.confianca, duracao_ms: duracao });
   const aviso = instrucaoDeCorrecao(config, lei, vezes, bloqueios);
-  return decisao === 'bloqueada' ? { decision: 'block', reason: aviso } : { systemMessage: `[leis] ${aviso}` };
+  const saida = decisao === 'bloqueada' ? { decision: 'block', reason: aviso } : { systemMessage: `[leis] ${aviso}` };
+  return escalar(saida, { entrada, config, lei, projeto: base.projeto }, deps);
 }
 
 async function julgarOmissaoDeLeitura(config, lei, entrada, texto, deps) {

@@ -100,6 +100,24 @@ function errosDaLeitura(leitura) {
   return [...erros, ...errosDasConsultas(leitura.consultas)];
 }
 
+function errosDaEscalada(escalada) {
+  if (escalada === undefined) return [];
+  if (!escalada || typeof escalada !== 'object' || Array.isArray(escalada)) return ['escalada deve ser objeto'];
+  const erros = [];
+  if (escalada.modo !== undefined && !['observar', 'pausar'].includes(escalada.modo)) erros.push('escalada.modo deve ser "observar" ou "pausar"');
+  if (escalada.aviso !== undefined && !ehListaDeTextos(escalada.aviso)) erros.push('escalada.aviso deve ser lista de textos (comando e argumentos, {mensagem} é trocado)');
+  return erros;
+}
+
+function errosDoAceite(aceite) {
+  if (aceite === undefined) return [];
+  if (!aceite || typeof aceite !== 'object' || Array.isArray(aceite)) return ['aceite deve ser objeto'];
+  const erros = [];
+  if (aceite.categorias !== undefined && (!aceite.categorias || typeof aceite.categorias !== 'object' || Array.isArray(aceite.categorias) || !Object.values(aceite.categorias).every(ehTexto))) erros.push('aceite.categorias deve mapear nome para descrição');
+  for (const campo of ['minimo', 'janela']) if (aceite[campo] !== undefined && !(Number.isInteger(aceite[campo]) && aceite[campo] > 0)) erros.push(`aceite.${campo} deve ser inteiro positivo`);
+  return erros;
+}
+
 function errosDosModos(modos, numeros) {
   if (!modos || typeof modos !== 'object' || Array.isArray(modos)) return ['modos deve ser objeto'];
   return Object.entries(modos).flatMap(([chave, valor]) => {
@@ -120,7 +138,7 @@ export function validarEsquema(c) {
   c.leis.forEach((lei, i) => erros.push(...errosDaLei(lei, i, numeros)));
   if (!ehListaDeTextos(c.equilibrio)) erros.push('equilibrio deve ser lista de textos');
   if (!ehListaDeTextos(c.vedacoes)) erros.push('vedacoes deve ser lista de textos');
-  erros.push(...errosDePapeis(c.leis), ...errosDoJev(c.jev), ...errosDaLeitura(c.leitura), ...errosDasFontes(c.fontes), ...errosDosModos(c.modos, numeros));
+  erros.push(...errosDePapeis(c.leis), ...errosDoJev(c.jev), ...errosDaLeitura(c.leitura), ...errosDasFontes(c.fontes), ...errosDosModos(c.modos, numeros), ...errosDaEscalada(c.escalada), ...errosDoAceite(c.aceite));
   return erros;
 }
 

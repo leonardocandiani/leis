@@ -2,6 +2,7 @@
 // PreToolUse (Bash e AskUserQuestion): regras determinísticas, sem rede e sem ler arquivo grande.
 import { nomeDoProjeto, principal, projetoTem, saidaNegar } from './entrada.mjs';
 import { carregarConfig, leiPorPapel, modoDaLei, nomeCompleto } from './leis.mjs';
+import { escalar } from './escalada.mjs';
 import { registrar } from './registro.mjs';
 
 const GATILHOS = /sleep|access_token|SSHPASS|Bearer/;
@@ -33,11 +34,12 @@ export function executar(entrada, deps = {}) {
   const lei = leiPorPapel(config, papel);
   if (!lei) return null;
   const bloquear = modoDaLei(config, lei.numero) === 'bloquear';
+  const projeto = nomeDoProjeto(entrada);
   registrar({
-    sessao: entrada.session_id, projeto: nomeDoProjeto(entrada), hook: 'fiscal-acao', lei: lei.sigla, natureza: 'acao',
+    sessao: entrada.session_id, projeto, hook: 'fiscal-acao', lei: lei.sigla, natureza: 'acao', sinal: regra,
     decisao: bloquear ? 'negada' : 'observada', trecho: `${regra}: ${entrada.tool_input?.command ?? entrada.tool_name}`,
   });
-  return bloquear ? saidaNegar(`${nomeCompleto(lei)}: ${motivo}`) : null;
+  return escalar(bloquear ? saidaNegar(`${nomeCompleto(lei)}: ${motivo}`) : null, { entrada, config, lei, projeto }, deps);
 }
 
 await principal(import.meta.url, executar);
