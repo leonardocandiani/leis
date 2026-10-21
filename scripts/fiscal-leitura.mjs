@@ -21,6 +21,13 @@ const CONFIANCA_MINIMA = 0.7;
 const AVISO_MINIMO = 0.4;
 const JEV_MINIMO_MS = 800;
 const FLAGS_IGNORADAS_PADRAO = ['--origem'];
+const MANUTENCAO = /(?:^|\s)--(?:substitui|cancelar)(?:[\s=]|$)/;
+
+// A flag só conta no segmento da própria saída e fora de aspas; um envio novo no mesmo comando segue consultado.
+function soManutencao(texto, saidas) {
+  const segmentos = texto.split(/\|\|?|&&|;|\n/).filter((s) => casaAlgum(saidas, s));
+  return segmentos.length > 0 && segmentos.every((s) => MANUTENCAO.test(s.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, ' ')));
+}
 const FLAGS_DE_TEXTO = new Set(['titulo', 'contexto', 'mensagem', 'texto', 'descricao', 'corpo', 'assunto', 'motivo', 'nota', 'message', 'title', 'body', 'text', 'description']);
 const HORARIO = /\b\d{1,2}(?:h(?:\d{2})?|:\d{2})(?!\w)/g;
 const DATA = /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/g;
@@ -40,13 +47,22 @@ const textoDaEntrada = (entrada) => (entrada.tool_name === 'Bash'
 
 const casaAlgum = (padroes, texto) => (padroes ?? []).some((p) => regexSeguro(p)?.test(texto));
 
+// Só vira fonte o arquivo que a sessão consegue e pode ler: binário de sistema, segredo (.env, o keyfence nega a leitura)
+// e mídia que o Read não abre (vídeo, áudio, compactado, banco) ficam de fora, senão a negação manda fazer o impossível.
+const PASTA_DE_SISTEMA = /^\/(?:bin|sbin|usr|System|dev|etc)\//;
+const ILEGIVEL = /(?:^|\/)\.env(?:\.[\w-]+)?$|\.(?:mp4|m4v|mov|webm|mkv|avi|mp3|m4a|ogg|opus|wav|aac|flac|zip|gz|tgz|zst|7z|rar|sqlite|db|wal)$/i;
+
 function ehArquivo(caminho) {
+  if (PASTA_DE_SISTEMA.test(caminho) || ILEGIVEL.test(caminho)) return false;
   try {
     return statSync(caminho).isFile();
   } catch {
     return false;
   }
 }
+
+// Destino com variável de shell, substituição ou valor mascarado não é conversa que se possa ler.
+const DESTINO_LEGIVEL = (d) => !/[$`⟨⟩]|^\[[^\]]*\]$/.test(d);
 
 function valoresDaFlag(texto, flag) {
   const rx = new RegExp(`(?:^|\\s)${escapar(flag)}(?:=|\\s+)("[^"]*"|'[^']*'|\\S+)`, 'g');
@@ -64,7 +80,9 @@ function caminhosDe(texto) {
 export function extrairFontes(texto, leitura = {}) {
   const alvo = normalizar(texto);
   const arquivos = caminhosDe(texto);
-  const destinos = [...new Set((leitura.flags_de_destino ?? []).flatMap((f) => valoresDaFlag(texto, f)))];
+  // Destino dispensado: a conversa que a sessão já recebe pelo próprio canal (o privado do dono, por exemplo).
+  const dispensados = new Set((leitura.destinos_dispensados ?? []).map(normalizar));
+  const destinos = [...new Set((leitura.flags_de_destino ?? []).flatMap((f) => valoresDaFlag(texto, f)))].filter((d) => DESTINO_LEGIVEL(d) && !dispensados.has(normalizar(d)));
   const nomes = (leitura.nomes ?? []).filter((n) => new RegExp(`(?<![a-z0-9])${escapar(normalizar(n))}(?![a-z0-9])`).test(alvo));
   const fontes = [
     ...destinos.map((fonte) => ({ fonte, tipo: 'destino' })),
@@ -167,17 +185,28 @@ async function consultar(leitura, fontes, tetoMs, textoDaAcao) {
   return { indisponiveis: resultados.filter((r) => r.indisponivel).map((r) => r.nome), candidatas };
 }
 
+// Medido em 20/10: o JEV marcava "já feito" no relato, porque a consulta acha o próprio assunto relatado.
 const CRITERIOS_DA_CONSULTA = {
-  ja_feito: 'a ação descrita já foi executada, segundo as linhas de evidência',
-  ja_aberto: 'já existe pedido, espera ou oferta aberta que esta ação repete ou contradiz: o mesmo pedido de novo, ou o mesmo horário já oferecido a outra pessoa. Ação que dá andamento ao que está aberto (responde, troca, fecha) não conta',
-  nenhum: 'as linhas não mostram que a ação já foi feita nem que haja algo aberto sobre ela',
+  ja_feito: 'a ação pede, cria ou executa de novo algo que as linhas mostram já executado',
+  ja_aberto: 'a ação abre de novo um pedido, espera ou oferta que já está aberto, ou oferece a outra pessoa um horário já oferecido. Ação que dá andamento ao que está aberto (responde, troca, fecha, cancela) não conta',
+  nenhum: 'as linhas não mostram repetição. Também é nenhum: relato do que já foi feito, repasse de resposta, correção de dado, cobrança ou referência a algo que está aberto',
 };
 
 async function julgarCandidatas(candidatas, texto, timeoutMs, deps, config) {
   const estado = { acao: mascarar(texto).slice(0, 1500), evidencias: candidatas.map((c) => mascarar(c.linha)) };
-  const perguntas = { achado: { type: 'choice', instructions: 'Dada a ação (campo acao) e as linhas que uma consulta local devolveu (campo evidencias), diga se a ação já foi feita ou se já há algo aberto sobre ela. Escolha "nenhum" na dúvida.', criteria: CRITERIOS_DA_CONSULTA } };
+  const perguntas = { achado: { type: 'choice', instructions: 'Dada a ação (campo acao) e as linhas que uma consulta local devolveu (campo evidencias), diga se a ação repete algo já feito ou já aberto. Relatar, repassar ou citar o que as linhas mostram não é repetir. Escolha "nenhum" na dúvida.', criteria: CRITERIOS_DA_CONSULTA } };
   const respostas = await (deps.jev ?? perguntarAoJev)(estado, perguntas, { timeoutMs, extras: config.jev?.arquivos_chave ?? [] });
-  return escolha(respostas, 'achado', CRITERIOS_DA_CONSULTA);
+  return repeticao(respostas, escolha(respostas, 'achado', CRITERIOS_DA_CONSULTA));
+}
+
+// "Já feito" e "já aberto" dizem a mesma coisa (a ação repete algo que existe): a confiança é a soma das duas, senão um
+// JEV dividido (0,37 e 0,44) fica abaixo do limiar com 0,81 de certeza de repetição. Medido em 21/10.
+function repeticao(respostas, veredito) {
+  const p = respostas?.achado?.probabilities;
+  if (!veredito || !p || typeof p.ja_feito !== 'number' || typeof p.ja_aberto !== 'number') return veredito;
+  const soma = p.ja_feito + p.ja_aberto;
+  if (soma <= (p.nenhum ?? 1 - soma)) return { escolha: 'nenhum', confianca: p.nenhum ?? 1 - soma };
+  return { escolha: p.ja_aberto >= p.ja_feito ? 'ja_aberto' : 'ja_feito', confianca: soma };
 }
 
 async function achadosDasConsultas(consultas, texto, inicio, deps, config, tetoMs) {
@@ -215,10 +244,14 @@ export async function executar(entrada, deps = {}) {
     return null;
   }
 
-  const fontes = extrairFontes(texto, leitura);
+  // Em Agent e Workflow o caminho vai ao subagente, que lê: a leitura é delegada, e só o destino segue conferido.
+  const extraidas = extrairFontes(texto, leitura);
+  const fontes = Object.assign(nome === 'Agent' || nome === 'Workflow' ? extraidas.filter((f) => f.tipo !== 'arquivo') : extraidas, { cortadas: nome === 'Agent' || nome === 'Workflow' ? 0 : extraidas.cortadas });
   const usos = fontes.length && entrada.transcript_path ? (deps.usosRecentes ?? usosRecentes)(entrada.transcript_path, deps.agora ?? Date.now()) : null;
   const teto = deps.tetoMs ?? TETO_CONSULTAS_MS;
-  const consultas = await consultar(leitura, fontes, teto, textoLivre(nome, texto, leitura));
+  // Trocar ou cancelar um pedido mexe no que já existe por definição: perguntar se "já existe" só produz falso positivo.
+  const manutencao = nome === 'Bash' && soManutencao(texto, leitura.saidas);
+  const consultas = manutencao ? { indisponiveis: [], candidatas: [] } : await consultar(leitura, fontes, teto, textoLivre(nome, texto, leitura));
   for (const indisponivel of consultas.indisponiveis) registrar({ ...base, decisao: 'consulta_indisponivel', trecho: indisponivel });
 
   const doJev = await achadosDasConsultas(consultas, texto, inicio, deps, config, teto);

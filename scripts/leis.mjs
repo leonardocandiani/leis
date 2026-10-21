@@ -90,7 +90,7 @@ function errosDaLeitura(leitura) {
   if (leitura === undefined) return [];
   if (!leitura || typeof leitura !== 'object' || Array.isArray(leitura)) return ['leitura deve ser objeto'];
   const erros = [];
-  for (const campo of ['saidas', 'leitores', 'flags_de_destino', 'flags_ignoradas', 'nomes']) {
+  for (const campo of ['saidas', 'leitores', 'flags_de_destino', 'flags_ignoradas', 'nomes', 'destinos_dispensados']) {
     if (leitura[campo] === undefined) continue;
     if (!ehListaDeTextos(leitura[campo])) erros.push(`leitura.${campo} deve ser lista de textos`);
     else if (['saidas', 'leitores'].includes(campo)) leitura[campo].forEach((p, i) => { if (!regexCompila(p)) erros.push(`leitura.${campo}[${i}] não é uma regex válida`); });

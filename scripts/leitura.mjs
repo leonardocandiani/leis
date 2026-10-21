@@ -63,17 +63,30 @@ export function turnoAtual(caminho) {
 
 export const comandosBash = (usos) => usos.filter((u) => u.nome === 'Bash').map((u) => String(u.entrada.command ?? ''));
 
+// Quem escreveu o arquivo inteiro na sessão conhece o conteúdo: o Write vale como leitura do mesmo caminho. Edit não, porque
+// mexe só num trecho e o resto do arquivo segue não lido.
+
 function leuArquivo(uso, fonte) {
-  const alvo = uso.entrada.file_path ?? uso.entrada.path;
-  if (!['Read', 'Grep'].includes(uso.nome) || typeof alvo !== 'string') return false;
+  const alvo = uso.entrada.file_path ?? uso.entrada.notebook_path ?? uso.entrada.path;
+  if (typeof alvo !== 'string') return false;
+  if (uso.nome === 'Write') return alvo === fonte;
+  if (!['Read', 'Grep'].includes(uso.nome)) return false;
   return alvo === fonte || fonte.startsWith(alvo.endsWith('/') ? alvo : `${alvo}/`);
 }
+
+// No Bash, só o heredoc que escreve o arquivo inteiro deixa o conteúdo no transcript: `cat > arquivo <<FIM` ou `cat <<FIM > arquivo`.
+// Redirecionar a saída de outro programa (curl > x) ou acrescentar (>>, tee -a) não mostra o que o arquivo tem.
+const escreveuNoBash = (comando, fonte) => {
+  const alvo = `["']?${escapar(fonte)}["']?`;
+  return new RegExp(`\\bcat\\s*>\\s*${alvo}\\s*<<|\\bcat\\s*<<-?\\s*["']?\\w+["']?\\s*>\\s*${alvo}(?=$|[\\s;|&)])`, 'm').test(comando);
+};
 
 export function leuFonte(usos, { fonte, tipo }, leitores = []) {
   return usos.some((u) => {
     if (tipo === 'arquivo' && leuArquivo(u, fonte)) return true;
     if (u.nome !== 'Bash') return false;
     const comando = String(u.entrada.command ?? '');
+    if (tipo === 'arquivo' && escreveuNoBash(comando, fonte)) return true;
     if (tipo === 'arquivo' && comando.split(SEPARADORES_DE_SHELL).some((seg) => LEITOR_NO_INICIO.test(seg.trim()) && seg.includes(fonte))) return true;
     return leitores.some((p) => leitorRegex(p, fonte)?.test(comando));
   });
