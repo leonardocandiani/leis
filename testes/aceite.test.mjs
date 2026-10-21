@@ -109,3 +109,35 @@ test('reservada e sem histórico seguem o veredito do JEV', async () => {
   const saida = await stop(fim('Fiz o post. Quer que eu publique?', { session_id: 's2' }), { config: config(), jev: jevCom({ quebra: 'top', categoria: 'conteudo' }) });
   assert.equal(saida.decision, 'block');
 });
+
+const turnoCom = (...usos) => () => ({ id: 't1', usos: usos.map(([nome, entrada]) => ({ nome, entrada })) });
+const inverso = () => registro().filter((e) => e.sinal?.startsWith('aceite_inverso'));
+
+test('caso inverso: decidir sozinho numa categoria que o dono recusa fica registrado como S.I.M. observada', async () => {
+  historico('design', vezes(6, 'recusou'));
+  const deps = { config: config(), jev: jevCom({ decisao: 'design' }), turnoAtual: turnoCom(['Edit', { file_path: '/x/tema.css' }]) };
+  assert.equal(await stop(fim('Troquei a paleta para escuro e subi.', { transcript_path: '/t.jsonl' }), deps), null);
+  const [e] = inverso();
+  assert.equal(e.lei, 'S.I.M.');
+  assert.equal(e.decisao, 'observada');
+  assert.equal(e.sinal, 'aceite_inverso+design');
+  // O mesmo turno não é julgado duas vezes.
+  await stop(fim('Troquei a paleta para escuro e subi.', { transcript_path: '/t.jsonl' }), deps);
+  assert.equal(inverso().length, 1);
+});
+
+test('caso inverso não chama o JEV sem categoria recusada, sem ação além de ler ou quando a resposta pergunta', async () => {
+  const fim2 = (t) => fim(t, { transcript_path: '/t.jsonl' });
+  await stop(fim2('Troquei a paleta.'), { config: config(), jev: jevProibido, turnoAtual: turnoCom(['Edit', { file_path: '/x' }]) });
+  historico('design', vezes(6, 'recusou'));
+  await stop(fim2('Li o arquivo e resumi.'), { config: config(), jev: jevProibido, turnoAtual: turnoCom(['Read', { file_path: '/x' }]) });
+  assert.equal(inverso().length, 0);
+});
+
+test('caso inverso com JEV dizendo nenhuma registra passou, sem lei', async () => {
+  historico('design', vezes(6, 'recusou'));
+  await stop(fim('Corrigi o teste que falhava.', { transcript_path: '/t.jsonl' }), { config: config(), jev: jevCom({ decisao: 'nenhuma' }), turnoAtual: turnoCom(['Bash', { command: 'npm test' }]) });
+  const [e] = inverso();
+  assert.equal(e.decisao, 'passou');
+  assert.equal(e.lei, undefined);
+});

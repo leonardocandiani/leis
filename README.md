@@ -160,6 +160,8 @@ Nas últimas 10 respostas da categoria (com pelo menos 5):
 | `mantem_perguntando` | 50% ou menos aceitas | a pergunta passa, mesmo com o JEV apontando T.O.P. |
 | `misto` ou `aprendendo` | o resto | vale o veredito do JEV |
 
+O caso inverso também conta: quando a resposta não pergunta nada, o turno fez algo além de ler e existe categoria em `mantem_perguntando`, o JEV confere se a sessão decidiu sozinha algo dessa categoria. Se decidiu, o registro ganha uma S.I.M. com o sinal `aceite_inverso+<categoria>`. Por enquanto só registra (`observada`), até o falso positivo ser medido.
+
 As reservadas nunca viram `sempre_aceita`, nem com todos os aceites. Para trocar as categorias, ponha `aceite.categorias` (nome e descrição) no `leis.json`; `aceite.janela` e `aceite.minimo` mudam o tamanho da janela.
 
 ### Dupla quebra
