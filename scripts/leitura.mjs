@@ -61,6 +61,13 @@ export function turnoAtual(caminho) {
   return { id: prompt?.uuid ?? prompt?.timestamp ?? 'inicio', usos: usosDe(eventos.slice(inicio + 1)) };
 }
 
+// A última mensagem que a sessão recebeu, inclusive a de outra sessão (que chega como isMeta): é ali que mora a ordem.
+export function ultimaMensagem(caminho) {
+  const eventos = eventosDoTranscript(caminho) ?? [];
+  const e = eventos.findLast((x) => x.type === 'user' && textoDe(x.message?.content).trim() !== '');
+  return e ? textoDe(e.message.content) : '';
+}
+
 export const comandosBash = (usos) => usos.filter((u) => u.nome === 'Bash').map((u) => String(u.entrada.command ?? ''));
 
 // Quem escreveu o arquivo inteiro na sessão conhece o conteúdo: o Write vale como leitura do mesmo caminho. Edit não, porque

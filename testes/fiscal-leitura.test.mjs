@@ -50,7 +50,9 @@ function arquivoReal(nome = 'nota.md') {
   return caminho;
 }
 
-const enviar = (message, extra = {}) => ({ session_id: 's1', cwd: '/x/p', tool_name: 'SendMessage', tool_input: { message }, ...extra });
+// Saída que confere arquivo: SendMessage, Agent e Workflow delegam a leitura a quem recebe.
+const enviar = (message, extra = {}) => ({ session_id: 's1', cwd: '/x/p', tool_name: 'Bash', tool_input: { command: `meu-envio texto <<'FIM'\n${message}\nFIM` }, ...extra });
+const mensagem = (message, extra = {}) => ({ session_id: 's1', cwd: '/x/p', tool_name: 'SendMessage', tool_input: { message }, ...extra });
 const bash = (command, extra = {}) => ({ session_id: 's1', cwd: '/x/p', tool_name: 'Bash', tool_input: { command }, ...extra });
 const negou = (saida) => saida?.hookSpecificOutput?.permissionDecision === 'deny';
 
@@ -422,8 +424,7 @@ test('sugestão de leitura mostra o caminho inteiro, sem máscara, para a sessã
   mkdirSync(join(raiz, 'midia', '5511987654321_s'), { recursive: true });
   const arq = join(raiz, 'midia', '5511987654321_s', 'doc.pdf');
   writeFileSync(arq, 'x');
-  const entrada = { session_id: 's1', cwd: '/x/p', tool_name: 'SendMessage', tool_input: { message: `aplique ${arq}` }, transcript_path: transcript(prompt()) };
-  const saida = await executar(entrada, { config: cfg('bloquear') });
+  const saida = await executar(enviar(`aplique ${arq}`, { transcript_path: transcript(prompt()) }), { config: cfg('bloquear') });
   assert.ok(saida.hookSpecificOutput.permissionDecisionReason.includes(`Read ${arq}`));
 });
 
@@ -449,12 +450,30 @@ test('arquivo de worktree temporária em /private/var continua fonte', () => {
   assert.deepEqual(extrairFontes(`siga ${real}`, LEITURA).map((f) => f.fonte), [real]);
 });
 
-test('Agent e Workflow delegam a leitura do arquivo ao subagente; SendMessage não', async () => {
+test('Agent, Workflow e SendMessage delegam a leitura do arquivo a quem recebe; a saída do Bash não', async () => {
   const arq = arquivoReal('regras.md');
   const t = transcript(prompt(), uso('Read', { file_path: '/outro.md' }));
   const agente = { session_id: 's1', cwd: '/x/p', tool_name: 'Agent', tool_input: { prompt: `Leia ${arq} antes de começar.` }, transcript_path: t };
   assert.equal(await executar(agente, { config: cfg('bloquear') }), null);
+  assert.equal(await executar(mensagem(`o print está em ${arq}`, { transcript_path: t }), { config: cfg('bloquear') }), null);
   assert.ok(negou(await executar(enviar(`siga ${arq}`, { transcript_path: t }), { config: cfg('bloquear') })));
+});
+
+test('recibo de leitura no comando dispensa toda fonte; ordem do dono no turno dispensa o destino', async () => {
+  const arq = arquivoReal('call.pdf');
+  const t = transcript(prompt());
+  const com = (extra) => cfg('bloquear', { flags_de_destino: ['--para'], ...extra });
+  const envio = (cmd) => ({ session_id: 's1', cwd: '/x/p', tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: t });
+  assert.ok(negou(await executar(envio(`meu-envio texto --para ana --anexo ${arq}`), { config: com({}) })));
+  const recibo = { config: com({ provas_de_leitura: ['--recibo\\s+\\S'] }) };
+  assert.equal(await executar(envio(`meu-envio texto --para ana --recibo "$R" --anexo ${arq}`), recibo), null);
+  assert.ok(negou(await executar(envio(`meu-envio texto --para ana --mensagem "erro: --recibo falso" --anexo ${arq}`), recibo)));
+  const ordem = { config: com({ ordens_do_dono: ['\\[chamado\\]'] }), ultimaMensagem: () => '[chamado] avisa a ana que vou atrasar' };
+  assert.equal(await executar(envio('meu-envio texto --para ana'), ordem), null);
+  // A ordem dispensa só o destino: arquivo citado continua precisando de leitura.
+  assert.ok(negou(await executar(envio(`meu-envio texto --para ana --anexo ${arq}`), ordem)));
+  const outra = { ...ordem, ultimaMensagem: () => 'segue o trabalho' };
+  assert.ok(negou(await executar(envio('meu-envio texto --para ana'), outra)));
 });
 
 test('segredo, mídia que o Read não abre e binário de sistema não viram fonte', () => {
@@ -478,6 +497,13 @@ test('trocar ou cancelar pedido não consulta "já existe"', async () => {
   for (const flag of ['--substitui 14f0', '--cancelar 8b1a']) {
     assert.equal(await executar(bash(`${ENVIO} ${flag}`, { transcript_path: t }), { config: c, jev: jevProibido }), null);
   }
+});
+
+test('ponto e vírgula dentro do texto entre aspas não esconde o --substitui do mesmo comando', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('enviado ontem para Fulano')] });
+  const t = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs Fulano' }));
+  const cmd = 'meu-envio texto --para Fulano --mensagem "às 11h tenho call; às 14h estou livre" --substitui 0544';
+  assert.equal(await executar(bash(cmd, { transcript_path: t }), { config: c, jev: jevProibido }), null);
 });
 
 test('flag de troca dentro de aspas ou noutro segmento não pula a consulta', async () => {
@@ -511,4 +537,17 @@ test('JEV dividido entre já feito e já aberto soma as duas: 0,37 + 0,44 nega; 
 test('destino dispensado na config não pede leitura', () => {
   const fontes = extrairFontes('meu-envio texto --para Dono --para Fulano', { ...LEITURA, destinos_dispensados: ['dono'] });
   assert.deepEqual(fontes.map((f) => f.fonte), ['Fulano']);
+});
+
+test('provas_de_leitura e ordens_do_dono são listas de regex conferidas', () => {
+  const c = cfg('observar', { provas_de_leitura: ['('], ordens_do_dono: 'x' }).config;
+  const erros = validarEsquema(c);
+  assert.ok(erros.some((e) => /leitura.provas_de_leitura\[0\] não é uma regex válida/.test(e)));
+  assert.ok(erros.some((e) => /leitura.ordens_do_dono/.test(e)));
+});
+
+test('a ordem vale da última mensagem recebida, mesmo a de outra sessão marcada como isMeta', async () => {
+  const t = transcript(prompt(), { type: 'user', isMeta: true, timestamp: quando(1), message: { content: 'outra sessão: [chamado] avisa a ana que vou atrasar' } });
+  const envio = { session_id: 's1', cwd: '/x/p', tool_name: 'Bash', tool_input: { command: 'meu-envio texto --para ana' }, transcript_path: t };
+  assert.equal(await executar(envio, { config: cfg('bloquear', { ordens_do_dono: ['\\[chamado\\]'] }) }), null);
 });

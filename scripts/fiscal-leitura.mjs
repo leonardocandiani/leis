@@ -5,13 +5,14 @@ import { execFile } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { nomeDoProjeto, principal, projetoTem, saidaContexto, saidaNegar } from './entrada.mjs';
 import { carregarConfig, leiPorPapel, modoDaLei, nomeCompleto, normalizar } from './leis.mjs';
-import { escapar, leuFonte, regexSeguro, usosRecentes } from './leitura.mjs';
+import { escapar, leuFonte, regexSeguro, ultimaMensagem, usosRecentes } from './leitura.mjs';
 import { perguntar as perguntarAoJev, escolha } from './jev.mjs';
 import { mascarar, trecho } from './mascarar.mjs';
 import { escalar } from './escalada.mjs';
 import { registrar } from './registro.mjs';
 
 const FERRAMENTAS = new Set(['SendMessage', 'Agent', 'Workflow']);
+const LEITURA_DELEGADA = new Set(['SendMessage', 'Agent', 'Workflow']);
 const CAMPOS_DE_TEXTO = ['message', 'prompt', 'description', 'script'];
 const TETO_CONSULTAS_MS = 2000;
 const MAX_FONTES = 8;
@@ -25,9 +26,17 @@ const FLAGS_IGNORADAS_PADRAO = ['--origem'];
 const MANUTENCAO = /(?:^|\s)--(?:substitui|cancelar)(?:[\s=]|$)/;
 
 // A flag só conta no segmento da própria saída e fora de aspas; um envio novo no mesmo comando segue consultado.
+// O conteúdo entre aspas vira "x" do mesmo tamanho: separador dentro do texto não parte o comando, e flag dentro do texto não conta.
+const ENTRE_ASPAS = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
+const mascararAspas = (texto) => texto.replace(ENTRE_ASPAS, (m) => `${m[0]}${'x'.repeat(m.length - 2)}${m.at(-1)}`);
+
+// O segmento é cortado na cópia mascarada e lido no original, para reconhecer a saída mesmo com o nome entre aspas.
 function soManutencao(texto, saidas) {
-  const segmentos = texto.split(/\|\|?|&&|;|\n/).filter((s) => casaAlgum(saidas, s));
-  return segmentos.length > 0 && segmentos.every((s) => MANUTENCAO.test(s.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, ' ')));
+  const mascarado = mascararAspas(texto);
+  const cortes = [...mascarado.matchAll(/\|\|?|&&|;|\n/g)].map((m) => [m.index, m.index + m[0].length]);
+  const limites = [[0, 0], ...cortes, [texto.length, texto.length]];
+  const segmentos = limites.slice(1).map(([inicio], i) => [limites[i][1], inicio]).filter(([a, b]) => casaAlgum(saidas, texto.slice(a, b)));
+  return segmentos.length > 0 && segmentos.every(([a, b]) => MANUTENCAO.test(mascarado.slice(a, b)));
 }
 const FLAGS_DE_TEXTO = new Set(['titulo', 'contexto', 'mensagem', 'texto', 'descricao', 'corpo', 'assunto', 'motivo', 'nota', 'message', 'title', 'body', 'text', 'description']);
 const HORARIO = /\b\d{1,2}(?:h(?:\d{2})?|:\d{2})(?!\w)/g;
@@ -190,7 +199,7 @@ async function consultar(leitura, fontes, tetoMs, textoDaAcao) {
 const CRITERIOS_DA_CONSULTA = {
   ja_feito: 'a ação pede, cria ou executa de novo algo que as linhas mostram já executado',
   ja_aberto: 'a ação abre de novo um pedido, espera ou oferta que já está aberto, ou oferece a outra pessoa um horário já oferecido. Ação que dá andamento ao que está aberto (responde, troca, fecha, cancela) não conta',
-  nenhum: 'as linhas não mostram repetição. Também é nenhum: relato do que já foi feito, repasse de resposta, correção de dado, cobrança ou referência a algo que está aberto',
+  nenhum: 'as linhas não mostram repetição. Também é nenhum: relato do que já foi feito, repasse de resposta, correção de dado, cobrança, referência a algo que está aberto, e pedido sobre o mesmo assunto que faz pergunta nova ou pede outra decisão',
 };
 
 async function julgarCandidatas(candidatas, texto, timeoutMs, deps, config) {
@@ -226,6 +235,15 @@ async function achadosDasConsultas(consultas, texto, inicio, deps, config, tetoM
   return { achados: [{ tipo: 'ja_existe', fonte: consulta, texto: `a consulta "${consulta}" indica que ${quadro} (${linhas}); confirme antes de repetir.` }], jevFora: false };
 }
 
+// Prova de leitura no próprio comando (um recibo que só sai depois de ler a conversa) dispensa toda fonte. Turno aberto
+// por ordem direta do dono ("avisa a Ana que vou atrasar") dispensa o destino: negar ali barra a ordem dele (A.V.A.L.).
+function dispensaDeLeitura(texto, transcript, leitura, deps) {
+  // A prova vale só fora das aspas: "--recibo" escrito no texto da mensagem não é recibo.
+  if (casaAlgum(leitura.provas_de_leitura, mascararAspas(texto))) return 'tudo';
+  if (!leitura.ordens_do_dono?.length) return null;
+  return casaAlgum(leitura.ordens_do_dono, (deps.ultimaMensagem ?? ultimaMensagem)(transcript)) ? 'destino' : null;
+}
+
 export async function executar(entrada, deps = {}) {
   if (projetoTem('scripts', 'central', 'hooks', 'portao.ts')) return null;
   const nome = entrada.tool_name;
@@ -245,10 +263,12 @@ export async function executar(entrada, deps = {}) {
     return null;
   }
 
-  // Em Agent e Workflow o caminho vai ao subagente, que lê: a leitura é delegada, e só o destino segue conferido.
+  // Em Agent, Workflow e SendMessage o caminho vai a quem recebe, que lê: a leitura é delegada, e só o destino segue conferido.
   const extraidas = extrairFontes(texto, leitura);
-  const fontes = Object.assign(nome === 'Agent' || nome === 'Workflow' ? extraidas.filter((f) => f.tipo !== 'arquivo') : extraidas, { cortadas: nome === 'Agent' || nome === 'Workflow' ? 0 : extraidas.cortadas });
-  const usos = fontes.length && entrada.transcript_path ? (deps.usosRecentes ?? usosRecentes)(entrada.transcript_path, deps.agora ?? Date.now()) : null;
+  const delega = LEITURA_DELEGADA.has(nome);
+  const fontes = Object.assign(delega ? extraidas.filter((f) => f.tipo !== 'arquivo') : extraidas, { cortadas: delega ? 0 : extraidas.cortadas });
+  const dispensa = fontes.length && entrada.transcript_path ? dispensaDeLeitura(texto, entrada.transcript_path, leitura, deps) : null;
+  const usos = fontes.length && entrada.transcript_path && dispensa !== 'tudo' ? (deps.usosRecentes ?? usosRecentes)(entrada.transcript_path, deps.agora ?? Date.now()) : null;
   const teto = deps.tetoMs ?? TETO_CONSULTAS_MS;
   // Trocar ou cancelar um pedido mexe no que já existe por definição: perguntar se "já existe" só produz falso positivo.
   const manutencao = nome === 'Bash' && soManutencao(texto, leitura.saidas);
@@ -257,7 +277,8 @@ export async function executar(entrada, deps = {}) {
 
   const doJev = await achadosDasConsultas(consultas, texto, inicio, deps, config, teto);
   if (doJev.jevFora) registrar({ ...base, decisao: 'jev_indisponivel', trecho: 'consulta com candidatas' });
-  const achados = [...(usos ? achadosSemLeitura(fontes, usos, leitura) : []), ...doJev.achados];
+  const conferidas = dispensa === 'destino' ? fontes.filter((f) => f.tipo !== 'destino') : fontes;
+  const achados = [...(usos ? achadosSemLeitura(conferidas, usos, leitura) : []), ...doJev.achados];
   if (!achados.length && doJev.aviso) {
     registrar({ ...base, decisao: 'avisada', duracao_ms: Date.now() - inicio, trecho: `aviso: ${doJev.aviso.fonte}` });
     return saidaContexto('PreToolUse', `${nomeCompleto(lei)}: ${mascarar(doJev.aviso.texto)}`);
