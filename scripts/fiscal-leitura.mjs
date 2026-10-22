@@ -26,10 +26,17 @@ const FLAGS_IGNORADAS_PADRAO = ['--origem'];
 const MANUTENCAO = /(?:^|\s)--(?:substitui|cancelar)(?:[\s=]|$)/;
 
 // A flag só conta no segmento da própria saída e fora de aspas; um envio novo no mesmo comando segue consultado.
-// As aspas saem antes de separar: um ";" dentro do texto do pedido não pode partir o comando antes do --substitui.
+// O conteúdo entre aspas vira "x" do mesmo tamanho: separador dentro do texto não parte o comando, e flag dentro do texto não conta.
+const ENTRE_ASPAS = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
+const mascararAspas = (texto) => texto.replace(ENTRE_ASPAS, (m) => `${m[0]}${'x'.repeat(m.length - 2)}${m.at(-1)}`);
+
+// O segmento é cortado na cópia mascarada e lido no original, para reconhecer a saída mesmo com o nome entre aspas.
 function soManutencao(texto, saidas) {
-  const segmentos = texto.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""').split(/\|\|?|&&|;|\n/).filter((s) => casaAlgum(saidas, s));
-  return segmentos.length > 0 && segmentos.every((s) => MANUTENCAO.test(s));
+  const mascarado = mascararAspas(texto);
+  const cortes = [...mascarado.matchAll(/\|\|?|&&|;|\n/g)].map((m) => [m.index, m.index + m[0].length]);
+  const limites = [[0, 0], ...cortes, [texto.length, texto.length]];
+  const segmentos = limites.slice(1).map(([inicio], i) => [limites[i][1], inicio]).filter(([a, b]) => casaAlgum(saidas, texto.slice(a, b)));
+  return segmentos.length > 0 && segmentos.every(([a, b]) => MANUTENCAO.test(mascarado.slice(a, b)));
 }
 const FLAGS_DE_TEXTO = new Set(['titulo', 'contexto', 'mensagem', 'texto', 'descricao', 'corpo', 'assunto', 'motivo', 'nota', 'message', 'title', 'body', 'text', 'description']);
 const HORARIO = /\b\d{1,2}(?:h(?:\d{2})?|:\d{2})(?!\w)/g;
@@ -231,7 +238,8 @@ async function achadosDasConsultas(consultas, texto, inicio, deps, config, tetoM
 // Prova de leitura no próprio comando (um recibo que só sai depois de ler a conversa) dispensa toda fonte. Turno aberto
 // por ordem direta do dono ("avisa a Ana que vou atrasar") dispensa o destino: negar ali barra a ordem dele (A.V.A.L.).
 function dispensaDeLeitura(texto, transcript, leitura, deps) {
-  if (casaAlgum(leitura.provas_de_leitura, texto)) return 'tudo';
+  // A prova vale só fora das aspas: "--recibo" escrito no texto da mensagem não é recibo.
+  if (casaAlgum(leitura.provas_de_leitura, mascararAspas(texto))) return 'tudo';
   if (!leitura.ordens_do_dono?.length) return null;
   return casaAlgum(leitura.ordens_do_dono, (deps.ultimaMensagem ?? ultimaMensagem)(transcript)) ? 'destino' : null;
 }

@@ -465,7 +465,9 @@ test('recibo de leitura no comando dispensa toda fonte; ordem do dono no turno d
   const com = (extra) => cfg('bloquear', { flags_de_destino: ['--para'], ...extra });
   const envio = (cmd) => ({ session_id: 's1', cwd: '/x/p', tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: t });
   assert.ok(negou(await executar(envio(`meu-envio texto --para ana --anexo ${arq}`), { config: com({}) })));
-  assert.equal(await executar(envio(`meu-envio texto --para ana --recibo rcb_1 --anexo ${arq}`), { config: com({ provas_de_leitura: ['--recibo\\s+\\S'] }) }), null);
+  const recibo = { config: com({ provas_de_leitura: ['--recibo\\s+\\S'] }) };
+  assert.equal(await executar(envio(`meu-envio texto --para ana --recibo "$R" --anexo ${arq}`), recibo), null);
+  assert.ok(negou(await executar(envio(`meu-envio texto --para ana --mensagem "erro: --recibo falso" --anexo ${arq}`), recibo)));
   const ordem = { config: com({ ordens_do_dono: ['\\[chamado\\]'] }), ultimaMensagem: () => '[chamado] avisa a ana que vou atrasar' };
   assert.equal(await executar(envio('meu-envio texto --para ana'), ordem), null);
   // A ordem dispensa só o destino: arquivo citado continua precisando de leitura.
