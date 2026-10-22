@@ -497,6 +497,13 @@ test('trocar ou cancelar pedido não consulta "já existe"', async () => {
   }
 });
 
+test('ponto e vírgula dentro do texto entre aspas não esconde o --substitui do mesmo comando', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('enviado ontem para Fulano')] });
+  const t = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs Fulano' }));
+  const cmd = 'meu-envio texto --para Fulano --mensagem "às 11h tenho call; às 14h estou livre" --substitui 0544';
+  assert.equal(await executar(bash(cmd, { transcript_path: t }), { config: c, jev: jevProibido }), null);
+});
+
 test('flag de troca dentro de aspas ou noutro segmento não pula a consulta', async () => {
   const c = cfg('bloquear', { consultas: [consultaDe('enviado ontem para Fulano')] });
   const t = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs Fulano' }));

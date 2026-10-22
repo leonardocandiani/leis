@@ -26,9 +26,10 @@ const FLAGS_IGNORADAS_PADRAO = ['--origem'];
 const MANUTENCAO = /(?:^|\s)--(?:substitui|cancelar)(?:[\s=]|$)/;
 
 // A flag só conta no segmento da própria saída e fora de aspas; um envio novo no mesmo comando segue consultado.
+// As aspas saem antes de separar: um ";" dentro do texto do pedido não pode partir o comando antes do --substitui.
 function soManutencao(texto, saidas) {
-  const segmentos = texto.split(/\|\|?|&&|;|\n/).filter((s) => casaAlgum(saidas, s));
-  return segmentos.length > 0 && segmentos.every((s) => MANUTENCAO.test(s.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, ' ')));
+  const segmentos = texto.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""').split(/\|\|?|&&|;|\n/).filter((s) => casaAlgum(saidas, s));
+  return segmentos.length > 0 && segmentos.every((s) => MANUTENCAO.test(s));
 }
 const FLAGS_DE_TEXTO = new Set(['titulo', 'contexto', 'mensagem', 'texto', 'descricao', 'corpo', 'assunto', 'motivo', 'nota', 'message', 'title', 'body', 'text', 'description']);
 const HORARIO = /\b\d{1,2}(?:h(?:\d{2})?|:\d{2})(?!\w)/g;
