@@ -58,7 +58,14 @@ export function turnoAtual(caminho) {
   if (!eventos) return null;
   const inicio = eventos.findLastIndex(ehPromptDoDono);
   const prompt = eventos[inicio];
-  return { id: prompt?.uuid ?? prompt?.timestamp ?? 'inicio', prompt: prompt ? textoDe(prompt.message?.content) : '', usos: usosDe(eventos.slice(inicio + 1)) };
+  return { id: prompt?.uuid ?? prompt?.timestamp ?? 'inicio', usos: usosDe(eventos.slice(inicio + 1)) };
+}
+
+// A última mensagem que a sessão recebeu, inclusive a de outra sessão (que chega como isMeta): é ali que mora a ordem.
+export function ultimaMensagem(caminho) {
+  const eventos = eventosDoTranscript(caminho) ?? [];
+  const e = eventos.findLast((x) => x.type === 'user' && textoDe(x.message?.content).trim() !== '');
+  return e ? textoDe(e.message.content) : '';
 }
 
 export const comandosBash = (usos) => usos.filter((u) => u.nome === 'Bash').map((u) => String(u.entrada.command ?? ''));

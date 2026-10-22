@@ -466,11 +466,11 @@ test('recibo de leitura no comando dispensa toda fonte; ordem do dono no turno d
   const envio = (cmd) => ({ session_id: 's1', cwd: '/x/p', tool_name: 'Bash', tool_input: { command: cmd }, transcript_path: t });
   assert.ok(negou(await executar(envio(`meu-envio texto --para ana --anexo ${arq}`), { config: com({}) })));
   assert.equal(await executar(envio(`meu-envio texto --para ana --recibo rcb_1 --anexo ${arq}`), { config: com({ provas_de_leitura: ['--recibo\\s+\\S'] }) }), null);
-  const ordem = { config: com({ ordens_do_dono: ['\\[chamado\\]'] }), turnoAtual: () => ({ id: 'p1', prompt: '[chamado] avisa a ana que vou atrasar', usos: [] }) };
+  const ordem = { config: com({ ordens_do_dono: ['\\[chamado\\]'] }), ultimaMensagem: () => '[chamado] avisa a ana que vou atrasar' };
   assert.equal(await executar(envio('meu-envio texto --para ana'), ordem), null);
   // A ordem dispensa só o destino: arquivo citado continua precisando de leitura.
   assert.ok(negou(await executar(envio(`meu-envio texto --para ana --anexo ${arq}`), ordem)));
-  const outra = { ...ordem, turnoAtual: () => ({ id: 'p1', prompt: 'segue o trabalho', usos: [] }) };
+  const outra = { ...ordem, ultimaMensagem: () => 'segue o trabalho' };
   assert.ok(negou(await executar(envio('meu-envio texto --para ana'), outra)));
 });
 
@@ -535,4 +535,10 @@ test('provas_de_leitura e ordens_do_dono são listas de regex conferidas', () =>
   const erros = validarEsquema(c);
   assert.ok(erros.some((e) => /leitura.provas_de_leitura\[0\] não é uma regex válida/.test(e)));
   assert.ok(erros.some((e) => /leitura.ordens_do_dono/.test(e)));
+});
+
+test('a ordem vale da última mensagem recebida, mesmo a de outra sessão marcada como isMeta', async () => {
+  const t = transcript(prompt(), { type: 'user', isMeta: true, timestamp: quando(1), message: { content: 'outra sessão: [chamado] avisa a ana que vou atrasar' } });
+  const envio = { session_id: 's1', cwd: '/x/p', tool_name: 'Bash', tool_input: { command: 'meu-envio texto --para ana' }, transcript_path: t };
+  assert.equal(await executar(envio, { config: cfg('bloquear', { ordens_do_dono: ['\\[chamado\\]'] }) }), null);
 });

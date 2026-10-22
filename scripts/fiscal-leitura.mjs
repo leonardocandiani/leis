@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { nomeDoProjeto, principal, projetoTem, saidaContexto, saidaNegar } from './entrada.mjs';
 import { carregarConfig, leiPorPapel, modoDaLei, nomeCompleto, normalizar } from './leis.mjs';
-import { escapar, leuFonte, regexSeguro, turnoAtual, usosRecentes } from './leitura.mjs';
+import { escapar, leuFonte, regexSeguro, ultimaMensagem, usosRecentes } from './leitura.mjs';
 import { perguntar as perguntarAoJev, escolha } from './jev.mjs';
 import { mascarar, trecho } from './mascarar.mjs';
 import { escalar } from './escalada.mjs';
@@ -232,8 +232,7 @@ async function achadosDasConsultas(consultas, texto, inicio, deps, config, tetoM
 function dispensaDeLeitura(texto, transcript, leitura, deps) {
   if (casaAlgum(leitura.provas_de_leitura, texto)) return 'tudo';
   if (!leitura.ordens_do_dono?.length) return null;
-  const prompt = (deps.turnoAtual ?? turnoAtual)(transcript)?.prompt ?? '';
-  return casaAlgum(leitura.ordens_do_dono, prompt) ? 'destino' : null;
+  return casaAlgum(leitura.ordens_do_dono, (deps.ultimaMensagem ?? ultimaMensagem)(transcript)) ? 'destino' : null;
 }
 
 export async function executar(entrada, deps = {}) {
