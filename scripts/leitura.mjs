@@ -58,7 +58,7 @@ export function turnoAtual(caminho) {
   if (!eventos) return null;
   const inicio = eventos.findLastIndex(ehPromptDoDono);
   const prompt = eventos[inicio];
-  return { id: prompt?.uuid ?? prompt?.timestamp ?? 'inicio', usos: usosDe(eventos.slice(inicio + 1)) };
+  return { id: prompt?.uuid ?? prompt?.timestamp ?? 'inicio', prompt: prompt ? textoDe(prompt.message?.content) : '', usos: usosDe(eventos.slice(inicio + 1)) };
 }
 
 export const comandosBash = (usos) => usos.filter((u) => u.nome === 'Bash').map((u) => String(u.entrada.command ?? ''));
