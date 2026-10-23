@@ -14,7 +14,8 @@ import { registrar } from './registro.mjs';
 const FERRAMENTAS = new Set(['SendMessage', 'Agent', 'Workflow']);
 const LEITURA_DELEGADA = new Set(['SendMessage', 'Agent', 'Workflow']);
 const CAMPOS_DE_TEXTO = ['message', 'prompt', 'description', 'script'];
-const TETO_CONSULTAS_MS = 2000;
+// O fiscal levou até 1,9 s com o JEV respondendo, e a cauda além de 2 s virava jev_indisponivel (27 de 76 em 23/10).
+const TETO_CONSULTAS_MS = 4000;
 const MAX_FONTES = 8;
 const MAX_TERMOS = 8;
 const MAX_CANDIDATAS = 12;
@@ -23,7 +24,7 @@ const CONFIANCA_MINIMA = 0.7;
 const AVISO_MINIMO = 0.4;
 const JEV_MINIMO_MS = 800;
 const FLAGS_IGNORADAS_PADRAO = ['--origem'];
-const MANUTENCAO = /(?:^|\s)--(?:substitui|cancelar)(?:[\s=]|$)/;
+const MANUTENCAO = /(?:^|\s)--(?:substitui|herda|cancelar)(?:[\s=]|$)/;
 
 // A flag só conta no segmento da própria saída e fora de aspas; um envio novo no mesmo comando segue consultado.
 // O conteúdo entre aspas vira "x" do mesmo tamanho: separador dentro do texto não parte o comando, e flag dentro do texto não conta.
@@ -128,7 +129,7 @@ export function termosDe(texto) {
 const legivel = (padrao, fonte) => padrao.replaceAll('{fonte}', fonte).replace(/\\b/g, '').replace(/\\s[+*]?/g, ' ').replace(/\[[^\]]*\][?*+]?/g, '').replace(/\\(.)/g, '$1').replace(/\s+/g, ' ').trim();
 
 function achadosSemLeitura(fontes, usos, leitura) {
-  return fontes.filter((f) => !leuFonte(usos, f, leitura.leitores)).map((f) => {
+  return fontes.filter((f) => !leuFonte(usos, f, leitura.leitores, leitura.identidades)).map((f) => {
     const leitor = (leitura.leitores ?? [])[0];
     const sugestao = f.tipo === 'arquivo' ? `Read ${f.fonte}` : leitor ? legivel(leitor, f.fonte) : `leia ${f.fonte}`;
     return { tipo: 'sem_leitura', fonte: f.fonte, texto: `"${f.fonte}" sem leitura nos últimos 30 min; leia antes de agir: ${sugestao}.` };
@@ -198,7 +199,7 @@ async function consultar(leitura, fontes, tetoMs, textoDaAcao) {
 // Medido em 20/10: o JEV marcava "já feito" no relato, porque a consulta acha o próprio assunto relatado.
 const CRITERIOS_DA_CONSULTA = {
   ja_feito: 'a ação pede, cria ou executa de novo algo que as linhas mostram já executado',
-  ja_aberto: 'a ação abre de novo um pedido, espera ou oferta que já está aberto, ou oferece a outra pessoa um horário já oferecido. Ação que dá andamento ao que está aberto (responde, troca, fecha, cancela) não conta',
+  ja_aberto: 'a ação abre de novo um pedido, espera ou oferta que já está aberto, ou oferece a outra pessoa um horário já oferecido. Ação que dá andamento ao que está aberto (responde, cobra, lembra, troca, fecha, cancela) não conta',
   nenhum: 'as linhas não mostram repetição. Também é nenhum: relato do que já foi feito, repasse de resposta, correção de dado, cobrança, referência a algo que está aberto, e pedido sobre o mesmo assunto que faz pergunta nova ou pede outra decisão',
 };
 
@@ -263,15 +264,17 @@ export async function executar(entrada, deps = {}) {
     return null;
   }
 
-  // Em Agent, Workflow e SendMessage o caminho vai a quem recebe, que lê: a leitura é delegada, e só o destino segue conferido.
-  const extraidas = extrairFontes(texto, leitura);
+  // Em Agent, Workflow e SendMessage quem recebe lê: a leitura é delegada. Flag de destino só existe em comando; na prosa
+  // ("--para <sessão>" citado numa mensagem) ela não é destino (medido em 23/10).
   const delega = LEITURA_DELEGADA.has(nome);
+  const extraidas = extrairFontes(texto, nome === 'Bash' ? leitura : { ...leitura, flags_de_destino: [] });
   const fontes = Object.assign(delega ? extraidas.filter((f) => f.tipo !== 'arquivo') : extraidas, { cortadas: delega ? 0 : extraidas.cortadas });
   const dispensa = fontes.length && entrada.transcript_path ? dispensaDeLeitura(texto, entrada.transcript_path, leitura, deps) : null;
   const usos = fontes.length && entrada.transcript_path && dispensa !== 'tudo' ? (deps.usosRecentes ?? usosRecentes)(entrada.transcript_path, deps.agora ?? Date.now()) : null;
   const teto = deps.tetoMs ?? TETO_CONSULTAS_MS;
   // Trocar ou cancelar um pedido mexe no que já existe por definição: perguntar se "já existe" só produz falso positivo.
-  const manutencao = nome === 'Bash' && soManutencao(texto, leitura.saidas);
+  // Mensagem a outra sessão não repete ação: quem recebe confere antes de agir. O JEV lia o relato como repetição (23/10).
+  const manutencao = delega || (nome === 'Bash' && soManutencao(texto, leitura.saidas));
   const consultas = manutencao ? { indisponiveis: [], candidatas: [] } : await consultar(leitura, fontes, teto, textoLivre(nome, texto, leitura));
   for (const indisponivel of consultas.indisponiveis) registrar({ ...base, decisao: 'consulta_indisponivel', trecho: indisponivel });
 

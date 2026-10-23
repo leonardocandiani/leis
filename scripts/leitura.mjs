@@ -2,6 +2,7 @@
 import { lerFinal, textoDe } from './contexto.mjs';
 
 const LIMITE_LEITURA = 1024 * 1024;
+const LIMITE_SAIDA = 64 * 1024;
 const LEITOR_NO_INICIO = /^(?:sudo\s+|\w+=\S*\s+)*(?:cat|head|tail|sed|grep|rg|less|awk|wc)\b/;
 const SEPARADORES_DE_SHELL = /\|\|?|&&|;/;
 
@@ -36,12 +37,14 @@ function eventosDoTranscript(caminho) {
 }
 
 // Só conta o uso que tem tool_result do mesmo id sem is_error: leitura negada, falha ou ainda em curso não prova nada.
+// A saída fica junto (cortada) porque a conversa lida pelo nome traz o identificador que o envio usa depois.
 function usosDe(eventos) {
   const resultados = new Map(eventos.flatMap((e) => (e.type === 'user' && Array.isArray(e.message?.content)
-    ? e.message.content.filter((b) => b?.type === 'tool_result' && b.tool_use_id).map((b) => [b.tool_use_id, b.is_error === true])
+    ? e.message.content.filter((b) => b?.type === 'tool_result' && b.tool_use_id).map((b) => [b.tool_use_id, b])
     : [])));
   return eventos.flatMap((e) => (e.type === 'assistant' && Array.isArray(e.message?.content)
-    ? e.message.content.filter((b) => b?.type === 'tool_use' && resultados.get(b.id) === false).map((b) => ({ ts: Date.parse(e.timestamp), nome: b.name, entrada: b.input ?? {} }))
+    ? e.message.content.filter((b) => b?.type === 'tool_use' && resultados.has(b.id) && resultados.get(b.id).is_error !== true)
+      .map((b) => ({ ts: Date.parse(e.timestamp), nome: b.name, entrada: b.input ?? {}, saida: textoDe(resultados.get(b.id).content).slice(0, LIMITE_SAIDA) }))
     : []));
 }
 
@@ -88,13 +91,19 @@ const escreveuNoBash = (comando, fonte) => {
   return new RegExp(`\\bcat\\s*>\\s*${alvo}\\s*<<|\\bcat\\s*<<-?\\s*["']?\\w+["']?\\s*>\\s*${alvo}(?=$|[\\s;|&)])`, 'm').test(comando);
 };
 
-export function leuFonte(usos, { fonte, tipo }, leitores = []) {
+// A saída do leitor só prova o destino pela linha de identidade que o próprio leitor escreve (padrões de `identidades`,
+// com {fonte} exato e casados linha a linha): texto de mensagem que cita o identificador não conta.
+const provaIdentidade = (saida, fonte, identidades) => identidades.some((p) => regexSeguro(String(p).replaceAll('{fonte}', escapar(fonte)), 'm')?.test(saida));
+
+export function leuFonte(usos, { fonte, tipo }, leitores = [], identidades = []) {
   return usos.some((u) => {
     if (tipo === 'arquivo' && leuArquivo(u, fonte)) return true;
     if (u.nome !== 'Bash') return false;
     const comando = String(u.entrada.command ?? '');
     if (tipo === 'arquivo' && escreveuNoBash(comando, fonte)) return true;
     if (tipo === 'arquivo' && comando.split(SEPARADORES_DE_SHELL).some((seg) => LEITOR_NO_INICIO.test(seg.trim()) && seg.includes(fonte))) return true;
-    return leitores.some((p) => leitorRegex(p, fonte)?.test(comando));
+    if (leitores.some((p) => leitorRegex(p, fonte)?.test(comando))) return true;
+    // Destino lido por outro nome (a conversa pelo nome, o envio pelo JID): vale se a saída do leitor se identifica com ele.
+    return tipo === 'destino' && provaIdentidade(String(u.saida ?? ''), fonte, identidades) && leitores.some((p) => leitorRegex(p)?.test(comando));
   });
 }
