@@ -14,7 +14,8 @@ import { registrar } from './registro.mjs';
 const FERRAMENTAS = new Set(['SendMessage', 'Agent', 'Workflow']);
 const LEITURA_DELEGADA = new Set(['SendMessage', 'Agent', 'Workflow']);
 const CAMPOS_DE_TEXTO = ['message', 'prompt', 'description', 'script'];
-const TETO_CONSULTAS_MS = 2000;
+// O fiscal levou até 1,9 s com o JEV respondendo, e a cauda além de 2 s virava jev_indisponivel (27 de 76 em 23/10).
+const TETO_CONSULTAS_MS = 4000;
 const MAX_FONTES = 8;
 const MAX_TERMOS = 8;
 const MAX_CANDIDATAS = 12;
@@ -128,7 +129,7 @@ export function termosDe(texto) {
 const legivel = (padrao, fonte) => padrao.replaceAll('{fonte}', fonte).replace(/\\b/g, '').replace(/\\s[+*]?/g, ' ').replace(/\[[^\]]*\][?*+]?/g, '').replace(/\\(.)/g, '$1').replace(/\s+/g, ' ').trim();
 
 function achadosSemLeitura(fontes, usos, leitura) {
-  return fontes.filter((f) => !leuFonte(usos, f, leitura.leitores)).map((f) => {
+  return fontes.filter((f) => !leuFonte(usos, f, leitura.leitores, leitura.identidades)).map((f) => {
     const leitor = (leitura.leitores ?? [])[0];
     const sugestao = f.tipo === 'arquivo' ? `Read ${f.fonte}` : leitor ? legivel(leitor, f.fonte) : `leia ${f.fonte}`;
     return { tipo: 'sem_leitura', fonte: f.fonte, texto: `"${f.fonte}" sem leitura nos últimos 30 min; leia antes de agir: ${sugestao}.` };
@@ -198,7 +199,7 @@ async function consultar(leitura, fontes, tetoMs, textoDaAcao) {
 // Medido em 20/10: o JEV marcava "já feito" no relato, porque a consulta acha o próprio assunto relatado.
 const CRITERIOS_DA_CONSULTA = {
   ja_feito: 'a ação pede, cria ou executa de novo algo que as linhas mostram já executado',
-  ja_aberto: 'a ação abre de novo um pedido, espera ou oferta que já está aberto, ou oferece a outra pessoa um horário já oferecido. Ação que dá andamento ao que está aberto (responde, troca, fecha, cancela) não conta',
+  ja_aberto: 'a ação abre de novo um pedido, espera ou oferta que já está aberto, ou oferece a outra pessoa um horário já oferecido. Ação que dá andamento ao que está aberto (responde, cobra, lembra, troca, fecha, cancela) não conta',
   nenhum: 'as linhas não mostram repetição. Também é nenhum: relato do que já foi feito, repasse de resposta, correção de dado, cobrança, referência a algo que está aberto, e pedido sobre o mesmo assunto que faz pergunta nova ou pede outra decisão',
 };
 

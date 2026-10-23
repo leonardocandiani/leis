@@ -91,7 +91,11 @@ const escreveuNoBash = (comando, fonte) => {
   return new RegExp(`\\bcat\\s*>\\s*${alvo}\\s*<<|\\bcat\\s*<<-?\\s*["']?\\w+["']?\\s*>\\s*${alvo}(?=$|[\\s;|&)])`, 'm').test(comando);
 };
 
-export function leuFonte(usos, { fonte, tipo }, leitores = []) {
+// A saída do leitor só prova o destino pela linha de identidade que o próprio leitor escreve (padrões de `identidades`,
+// com {fonte} exato e casados linha a linha): texto de mensagem que cita o identificador não conta.
+const provaIdentidade = (saida, fonte, identidades) => identidades.some((p) => regexSeguro(String(p).replaceAll('{fonte}', escapar(fonte)), 'm')?.test(saida));
+
+export function leuFonte(usos, { fonte, tipo }, leitores = [], identidades = []) {
   return usos.some((u) => {
     if (tipo === 'arquivo' && leuArquivo(u, fonte)) return true;
     if (u.nome !== 'Bash') return false;
@@ -99,7 +103,7 @@ export function leuFonte(usos, { fonte, tipo }, leitores = []) {
     if (tipo === 'arquivo' && escreveuNoBash(comando, fonte)) return true;
     if (tipo === 'arquivo' && comando.split(SEPARADORES_DE_SHELL).some((seg) => LEITOR_NO_INICIO.test(seg.trim()) && seg.includes(fonte))) return true;
     if (leitores.some((p) => leitorRegex(p, fonte)?.test(comando))) return true;
-    // Destino lido por outro nome (a conversa pelo nome, o envio pelo JID): vale se a saída do leitor traz o destino.
-    return tipo === 'destino' && String(u.saida ?? '').includes(fonte) && leitores.some((p) => leitorRegex(p)?.test(comando));
+    // Destino lido por outro nome (a conversa pelo nome, o envio pelo JID): vale se a saída do leitor se identifica com ele.
+    return tipo === 'destino' && provaIdentidade(String(u.saida ?? ''), fonte, identidades) && leitores.some((p) => leitorRegex(p)?.test(comando));
   });
 }

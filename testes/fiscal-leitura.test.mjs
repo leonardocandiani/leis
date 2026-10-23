@@ -522,6 +522,7 @@ test('o JEV recebe o critério de que relato e repasse não são repetição', a
   await executar(bash(ENVIO), { config: c, jev });
   const { perguntas } = jev.chamadas[0];
   assert.match(perguntas.achado.criteria.nenhum, /relato do que já foi feito, repasse de resposta/);
+  assert.match(perguntas.achado.criteria.ja_aberto, /responde, cobra, lembra/);
 });
 
 test('JEV dividido entre já feito e já aberto soma as duas: 0,37 + 0,44 nega; nenhum maior passa', async () => {
@@ -552,16 +553,18 @@ test('a ordem vale da última mensagem recebida, mesmo a de outra sessão marcad
   assert.equal(await executar(envio, { config: cfg('bloquear', { ordens_do_dono: ['\\[chamado\\]'] }) }), null);
 });
 
-test('destino lido pelo nome vale quando a saída do leitor traz o identificador do envio', async () => {
+test('destino lido pelo nome vale só pela linha de identidade que o leitor escreve', async () => {
   const jid = '5500000000001@s.whatsapp.net';
+  const c = cfg('bloquear', { identidades: ['^id: "{fonte}"$'] });
   const envio = (t) => bash(`meu-envio texto --para ${jid} --mensagem "ok"`, { transcript_path: t });
-  const comJid = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs "Fulano de Tal"' }, 1, 'ok', `conversa: "Fulano de Tal" ${jid}`));
-  assert.equal(await executar(envio(comJid), { config: cfg('bloquear') }), null);
-  const semJid = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs "Fulano de Tal"' }, 1, 'ok', 'conversa: "Fulano de Tal"'));
-  assert.ok(negou(await executar(envio(semJid), { config: cfg('bloquear') })));
-  // A saída só prova leitura quando veio de um leitor: o identificador ecoado por outro comando não conta.
-  const eco = transcript(prompt(), uso('Bash', { command: `echo ${jid}` }, 1, 'ok', jid));
-  assert.ok(negou(await executar(envio(eco), { config: cfg('bloquear') })));
+  const leu = (saida, command = 'meu-cli msgs "Fulano de Tal"') => transcript(prompt(), uso('Bash', { command }, 1, 'ok', saida));
+  assert.equal(await executar(envio(leu(`conversa: "Fulano de Tal"\nid: "${jid}"\ncount: 3`)), { config: c }), null);
+  // Mensagem que cita o id, id parecido e id ecoado por comando que não é leitor não provam a leitura.
+  assert.ok(negou(await executar(envio(leu(`conversa: "Outro"\n  "10:00","Outro","manda pro ${jid}"`)), { config: c })));
+  assert.ok(negou(await executar(envio(leu(`id: "${jid.replace('1@', '12@')}"`)), { config: c })));
+  assert.ok(negou(await executar(envio(leu(`id: "${jid}"`, `echo ${jid}`)), { config: c })));
+  // Sem identidades configuradas, a saída não prova nada.
+  assert.ok(negou(await executar(envio(leu(`id: "${jid}"`)), { config: cfg('bloquear') })));
 });
 
 test('mensagem a outra sessão: "--para" na prosa não é destino e não roda consulta de repetição', async () => {

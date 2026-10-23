@@ -90,10 +90,10 @@ function errosDaLeitura(leitura) {
   if (leitura === undefined) return [];
   if (!leitura || typeof leitura !== 'object' || Array.isArray(leitura)) return ['leitura deve ser objeto'];
   const erros = [];
-  for (const campo of ['saidas', 'leitores', 'flags_de_destino', 'flags_ignoradas', 'nomes', 'destinos_dispensados', 'provas_de_leitura', 'ordens_do_dono']) {
+  for (const campo of ['saidas', 'leitores', 'flags_de_destino', 'flags_ignoradas', 'nomes', 'destinos_dispensados', 'provas_de_leitura', 'ordens_do_dono', 'identidades']) {
     if (leitura[campo] === undefined) continue;
     if (!ehListaDeTextos(leitura[campo])) erros.push(`leitura.${campo} deve ser lista de textos`);
-    else if (['saidas', 'leitores', 'provas_de_leitura', 'ordens_do_dono'].includes(campo)) leitura[campo].forEach((p, i) => { if (!regexCompila(p)) erros.push(`leitura.${campo}[${i}] não é uma regex válida`); });
+    else if (['saidas', 'leitores', 'provas_de_leitura', 'ordens_do_dono', 'identidades'].includes(campo)) leitura[campo].forEach((p, i) => { if (!regexCompila(p)) erros.push(`leitura.${campo}[${i}] não é uma regex válida`); });
   }
   if (Array.isArray(leitura.leitores)) leitura.leitores.forEach((p, i) => { if (typeof p === 'string' && !p.includes('{fonte}')) erros.push(`leitura.leitores[${i}] deve conter o marcador {fonte}`); });
   if (leitura.registro_de_fato !== undefined && !(ehTexto(leitura.registro_de_fato) && regexCompila(leitura.registro_de_fato))) erros.push('leitura.registro_de_fato deve ser uma regex válida');
