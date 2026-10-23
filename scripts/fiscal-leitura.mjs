@@ -23,7 +23,7 @@ const CONFIANCA_MINIMA = 0.7;
 const AVISO_MINIMO = 0.4;
 const JEV_MINIMO_MS = 800;
 const FLAGS_IGNORADAS_PADRAO = ['--origem'];
-const MANUTENCAO = /(?:^|\s)--(?:substitui|cancelar)(?:[\s=]|$)/;
+const MANUTENCAO = /(?:^|\s)--(?:substitui|herda|cancelar)(?:[\s=]|$)/;
 
 // A flag só conta no segmento da própria saída e fora de aspas; um envio novo no mesmo comando segue consultado.
 // O conteúdo entre aspas vira "x" do mesmo tamanho: separador dentro do texto não parte o comando, e flag dentro do texto não conta.
@@ -263,15 +263,17 @@ export async function executar(entrada, deps = {}) {
     return null;
   }
 
-  // Em Agent, Workflow e SendMessage o caminho vai a quem recebe, que lê: a leitura é delegada, e só o destino segue conferido.
-  const extraidas = extrairFontes(texto, leitura);
+  // Em Agent, Workflow e SendMessage quem recebe lê: a leitura é delegada. Flag de destino só existe em comando; na prosa
+  // ("--para <sessão>" citado numa mensagem) ela não é destino (medido em 23/10).
   const delega = LEITURA_DELEGADA.has(nome);
+  const extraidas = extrairFontes(texto, nome === 'Bash' ? leitura : { ...leitura, flags_de_destino: [] });
   const fontes = Object.assign(delega ? extraidas.filter((f) => f.tipo !== 'arquivo') : extraidas, { cortadas: delega ? 0 : extraidas.cortadas });
   const dispensa = fontes.length && entrada.transcript_path ? dispensaDeLeitura(texto, entrada.transcript_path, leitura, deps) : null;
   const usos = fontes.length && entrada.transcript_path && dispensa !== 'tudo' ? (deps.usosRecentes ?? usosRecentes)(entrada.transcript_path, deps.agora ?? Date.now()) : null;
   const teto = deps.tetoMs ?? TETO_CONSULTAS_MS;
   // Trocar ou cancelar um pedido mexe no que já existe por definição: perguntar se "já existe" só produz falso positivo.
-  const manutencao = nome === 'Bash' && soManutencao(texto, leitura.saidas);
+  // Mensagem a outra sessão não repete ação: quem recebe confere antes de agir. O JEV lia o relato como repetição (23/10).
+  const manutencao = delega || (nome === 'Bash' && soManutencao(texto, leitura.saidas));
   const consultas = manutencao ? { indisponiveis: [], candidatas: [] } : await consultar(leitura, fontes, teto, textoLivre(nome, texto, leitura));
   for (const indisponivel of consultas.indisponiveis) registrar({ ...base, decisao: 'consulta_indisponivel', trecho: indisponivel });
 

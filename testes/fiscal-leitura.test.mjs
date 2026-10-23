@@ -29,14 +29,14 @@ function cfg(modo, leitura = {}) {
 const quando = (minutosAtras) => new Date(Date.now() - minutosAtras * 60000).toISOString();
 let contadorDeUso = 0;
 // `res` descreve o tool_result que o transcript() grava logo depois: 'ok' (padrão), 'erro' (is_error) ou 'nenhum' (leitura em curso).
-const uso = (nome, input, minutosAtras = 1, res = 'ok') => ({ type: 'assistant', timestamp: quando(minutosAtras), _res: res, message: { content: [{ type: 'tool_use', id: `tu${++contadorDeUso}`, name: nome, input }] } });
+const uso = (nome, input, minutosAtras = 1, res = 'ok', saida) => ({ type: 'assistant', timestamp: quando(minutosAtras), _res: res, _saida: saida, message: { content: [{ type: 'tool_use', id: `tu${++contadorDeUso}`, name: nome, input }] } });
 const prompt = (minutosAtras = 2) => ({ type: 'user', uuid: 'p1', timestamp: quando(minutosAtras), message: { content: 'faça isso' } });
 
 function transcript(...linhas) {
   const caminho = join(raiz, `t-${Math.random().toString(36).slice(2)}.jsonl`);
-  const eventos = linhas.flatMap(({ _res, ...evento }) => {
+  const eventos = linhas.flatMap(({ _res, _saida, ...evento }) => {
     if (!_res || _res === 'nenhum') return [evento];
-    const resultado = { type: 'tool_result', tool_use_id: evento.message.content[0].id, ...(_res === 'erro' ? { is_error: true } : {}) };
+    const resultado = { type: 'tool_result', tool_use_id: evento.message.content[0].id, ...(_saida ? { content: [{ type: 'text', text: _saida }] } : {}), ...(_res === 'erro' ? { is_error: true } : {}) };
     return [evento, { type: 'user', timestamp: evento.timestamp, message: { content: [resultado] } }];
   });
   writeFileSync(caminho, `${eventos.map((l) => JSON.stringify(l)).join('\n')}\n`);
@@ -494,7 +494,7 @@ test('destino com variável, substituição ou máscara não vira fonte', () => 
 test('trocar ou cancelar pedido não consulta "já existe"', async () => {
   const c = cfg('bloquear', { consultas: [consultaDe('enviado ontem para Fulano')] });
   const t = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs Fulano' }));
-  for (const flag of ['--substitui 14f0', '--cancelar 8b1a']) {
+  for (const flag of ['--substitui 14f0', '--herda 14f0', '--cancelar 8b1a']) {
     assert.equal(await executar(bash(`${ENVIO} ${flag}`, { transcript_path: t }), { config: c, jev: jevProibido }), null);
   }
 });
@@ -550,4 +550,24 @@ test('a ordem vale da última mensagem recebida, mesmo a de outra sessão marcad
   const t = transcript(prompt(), { type: 'user', isMeta: true, timestamp: quando(1), message: { content: 'outra sessão: [chamado] avisa a ana que vou atrasar' } });
   const envio = { session_id: 's1', cwd: '/x/p', tool_name: 'Bash', tool_input: { command: 'meu-envio texto --para ana' }, transcript_path: t };
   assert.equal(await executar(envio, { config: cfg('bloquear', { ordens_do_dono: ['\\[chamado\\]'] }) }), null);
+});
+
+test('destino lido pelo nome vale quando a saída do leitor traz o identificador do envio', async () => {
+  const jid = '5500000000001@s.whatsapp.net';
+  const envio = (t) => bash(`meu-envio texto --para ${jid} --mensagem "ok"`, { transcript_path: t });
+  const comJid = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs "Fulano de Tal"' }, 1, 'ok', `conversa: "Fulano de Tal" ${jid}`));
+  assert.equal(await executar(envio(comJid), { config: cfg('bloquear') }), null);
+  const semJid = transcript(prompt(), uso('Bash', { command: 'meu-cli msgs "Fulano de Tal"' }, 1, 'ok', 'conversa: "Fulano de Tal"'));
+  assert.ok(negou(await executar(envio(semJid), { config: cfg('bloquear') })));
+  // A saída só prova leitura quando veio de um leitor: o identificador ecoado por outro comando não conta.
+  const eco = transcript(prompt(), uso('Bash', { command: `echo ${jid}` }, 1, 'ok', jid));
+  assert.ok(negou(await executar(envio(eco), { config: cfg('bloquear') })));
+});
+
+test('mensagem a outra sessão: "--para" na prosa não é destino e não roda consulta de repetição', async () => {
+  const c = cfg('bloquear', { consultas: [consultaDe('pedido aberto para Fulano')] });
+  const t = transcript(prompt(), uso('Bash', { command: 'ls' }));
+  const texto = 'peça um subcomando `cli avisar --para <sessão> --mensagem` e o pedido de Fulano segue aberto';
+  assert.equal(await executar(mensagem(texto, { transcript_path: t }), { config: c, jev: jevProibido }), null);
+  assert.deepEqual(registro(), []);
 });
