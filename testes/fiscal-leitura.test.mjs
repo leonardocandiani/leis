@@ -582,3 +582,10 @@ test('no Bash, o destino sai só do segmento da saída, não de outro comando da
   assert.equal(saida, null);
   assert.deepEqual(registro().map((e) => e.trecho), ['sem_leitura: Fulano']);
 });
+
+test('continuação de linha e substituição de comando não escondem o destino da saída', async () => {
+  const t = transcript(prompt(), uso('Bash', { command: 'ls' }));
+  for (const cmd of ['meu-envio texto \\\n  --para Fulano --mensagem ok', 'meu-envio texto --dossie $(gerar | head -1; true) --para Fulano --mensagem ok', 'meu-envio texto --dossie $(a $(b | c); d) --para Fulano']) {
+    assert.ok(negou(await executar(bash(cmd, { transcript_path: t }), { config: cfg('bloquear') })), cmd);
+  }
+});

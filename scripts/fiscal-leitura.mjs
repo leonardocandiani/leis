@@ -31,9 +31,19 @@ const MANUTENCAO = /(?:^|\s)--(?:substitui|herda|cancelar)(?:[\s=]|$)/;
 const ENTRE_ASPAS = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
 const mascararAspas = (texto) => texto.replace(ENTRE_ASPAS, (m) => `${m[0]}${'x'.repeat(m.length - 2)}${m.at(-1)}`);
 
+// Substituição de comando, da mais interna para fora, e continuação de linha não partem o comando: viram "x" e espaço.
+function mascararShell(texto) {
+  let atual = mascararAspas(texto).replace(/\\\n/g, '  ');
+  for (let antes = ''; antes !== atual;) {
+    antes = atual;
+    atual = atual.replace(/\$\([^()]*\)/g, (m) => 'x'.repeat(m.length));
+  }
+  return atual;
+}
+
 // O segmento é cortado na cópia mascarada e lido no original, para reconhecer a saída mesmo com o nome entre aspas.
 function segmentosDeSaida(texto, saidas) {
-  const mascarado = mascararAspas(texto);
+  const mascarado = mascararShell(texto);
   const cortes = [...mascarado.matchAll(/\|\|?|&&|;|\n/g)].map((m) => [m.index, m.index + m[0].length]);
   const limites = [[0, 0], ...cortes, [texto.length, texto.length]];
   return limites.slice(1).map(([inicio], i) => [limites[i][1], inicio]).filter(([a, b]) => casaAlgum(saidas, texto.slice(a, b)))
