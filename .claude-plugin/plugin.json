@@ -1,6 +1,6 @@
 {
   "name": "leis",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Faz as leis de trabalho de uma pessoa valerem de verdade no Claude Code: regra, hooks, validação, auditoria e medição.",
   "author": { "name": "Leonardo Candiani" },
   "license": "MIT",

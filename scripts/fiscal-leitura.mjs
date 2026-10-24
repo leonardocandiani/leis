@@ -31,13 +31,28 @@ const MANUTENCAO = /(?:^|\s)--(?:substitui|herda|cancelar)(?:[\s=]|$)/;
 const ENTRE_ASPAS = /"(?:[^"\\]|\\.)*"|'[^']*'/g;
 const mascararAspas = (texto) => texto.replace(ENTRE_ASPAS, (m) => `${m[0]}${'x'.repeat(m.length - 2)}${m.at(-1)}`);
 
+// Substituição de comando, da mais interna para fora, e continuação de linha não partem o comando: viram "x" e espaço.
+function mascararShell(texto) {
+  let atual = mascararAspas(texto).replace(/\\\n/g, '  ');
+  for (let antes = ''; antes !== atual;) {
+    antes = atual;
+    atual = atual.replace(/\$\([^()]*\)/g, (m) => 'x'.repeat(m.length));
+  }
+  return atual;
+}
+
 // O segmento é cortado na cópia mascarada e lido no original, para reconhecer a saída mesmo com o nome entre aspas.
-function soManutencao(texto, saidas) {
-  const mascarado = mascararAspas(texto);
+function segmentosDeSaida(texto, saidas) {
+  const mascarado = mascararShell(texto);
   const cortes = [...mascarado.matchAll(/\|\|?|&&|;|\n/g)].map((m) => [m.index, m.index + m[0].length]);
   const limites = [[0, 0], ...cortes, [texto.length, texto.length]];
-  const segmentos = limites.slice(1).map(([inicio], i) => [limites[i][1], inicio]).filter(([a, b]) => casaAlgum(saidas, texto.slice(a, b)));
-  return segmentos.length > 0 && segmentos.every(([a, b]) => MANUTENCAO.test(mascarado.slice(a, b)));
+  return limites.slice(1).map(([inicio], i) => [limites[i][1], inicio]).filter(([a, b]) => casaAlgum(saidas, texto.slice(a, b)))
+    .map(([a, b]) => ({ original: texto.slice(a, b), mascarado: mascarado.slice(a, b) }));
+}
+
+function soManutencao(texto, saidas) {
+  const segmentos = segmentosDeSaida(texto, saidas);
+  return segmentos.length > 0 && segmentos.every((seg) => MANUTENCAO.test(seg.mascarado));
 }
 const FLAGS_DE_TEXTO = new Set(['titulo', 'contexto', 'mensagem', 'texto', 'descricao', 'corpo', 'assunto', 'motivo', 'nota', 'message', 'title', 'body', 'text', 'description']);
 const HORARIO = /\b\d{1,2}(?:h(?:\d{2})?|:\d{2})(?!\w)/g;
@@ -88,12 +103,13 @@ function caminhosDe(texto) {
 }
 
 // Destinos e nomes sempre entram; só os arquivos passam do teto, e o corte fica em `cortadas`.
-export function extrairFontes(texto, leitura = {}) {
+// `textoDoDestino`: onde ler as flags de destino (no Bash, só os segmentos da saída). Padrão: o texto todo.
+export function extrairFontes(texto, leitura = {}, textoDoDestino = texto) {
   const alvo = normalizar(texto);
   const arquivos = caminhosDe(texto);
   // Destino dispensado: a conversa que a sessão já recebe pelo próprio canal (o privado do dono, por exemplo).
   const dispensados = new Set((leitura.destinos_dispensados ?? []).map(normalizar));
-  const destinos = [...new Set((leitura.flags_de_destino ?? []).flatMap((f) => valoresDaFlag(texto, f)))].filter((d) => DESTINO_LEGIVEL(d) && !dispensados.has(normalizar(d)));
+  const destinos = [...new Set((leitura.flags_de_destino ?? []).flatMap((f) => valoresDaFlag(textoDoDestino, f)))].filter((d) => DESTINO_LEGIVEL(d) && !dispensados.has(normalizar(d)));
   const nomes = (leitura.nomes ?? []).filter((n) => new RegExp(`(?<![a-z0-9])${escapar(normalizar(n))}(?![a-z0-9])`).test(alvo));
   const fontes = [
     ...destinos.map((fonte) => ({ fonte, tipo: 'destino' })),
@@ -267,7 +283,11 @@ export async function executar(entrada, deps = {}) {
   // Em Agent, Workflow e SendMessage quem recebe lê: a leitura é delegada. Flag de destino só existe em comando; na prosa
   // ("--para <sessão>" citado numa mensagem) ela não é destino (medido em 23/10).
   const delega = LEITURA_DELEGADA.has(nome);
-  const extraidas = extrairFontes(texto, nome === 'Bash' ? leitura : { ...leitura, flags_de_destino: [] });
+  // No Bash, o destino sai só do segmento da saída: o "--para" de outro comando da mesma linha (o dossiê que antecede o
+  // pedido, por exemplo) não é para quem a mensagem vai (10 de 10 negações em 24/10).
+  const extraidas = nome === 'Bash'
+    ? extrairFontes(texto, leitura, segmentosDeSaida(texto, leitura.saidas).map((seg) => seg.original).join('\n'))
+    : extrairFontes(texto, { ...leitura, flags_de_destino: [] });
   const fontes = Object.assign(delega ? extraidas.filter((f) => f.tipo !== 'arquivo') : extraidas, { cortadas: delega ? 0 : extraidas.cortadas });
   const dispensa = fontes.length && entrada.transcript_path ? dispensaDeLeitura(texto, entrada.transcript_path, leitura, deps) : null;
   const usos = fontes.length && entrada.transcript_path && dispensa !== 'tudo' ? (deps.usosRecentes ?? usosRecentes)(entrada.transcript_path, deps.agora ?? Date.now()) : null;

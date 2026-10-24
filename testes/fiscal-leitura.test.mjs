@@ -369,7 +369,7 @@ test('caminho com espaço e acento, entre aspas, é fonte e exige leitura', asyn
 test('mais de 8 arquivos não escondem o destino: ele é conferido e o corte é registrado', async () => {
   const arqs = Array.from({ length: 10 }, (_, i) => arquivoReal(`n${i}.md`));
   const lidos = transcript(prompt(), ...arqs.slice(0, 8).map((a) => uso('Read', { file_path: a })));
-  const saida = await executar(enviar(`veja ${arqs.join(' ')} --para Fulano`, { transcript_path: lidos }), { config: cfg('bloquear') });
+  const saida = await executar(bash(`meu-envio texto --para Fulano --mensagem "veja ${arqs.join(' ')}"`, { transcript_path: lidos }), { config: cfg('bloquear') });
   assert.ok(negou(saida));
   const motivo = saida.hookSpecificOutput.permissionDecisionReason;
   assert.match(motivo, /"Fulano" sem leitura/);
@@ -573,4 +573,19 @@ test('mensagem a outra sessão: "--para" na prosa não é destino e não roda co
   const texto = 'peça um subcomando `cli avisar --para <sessão> --mensagem` e o pedido de Fulano segue aberto';
   assert.equal(await executar(mensagem(texto, { transcript_path: t }), { config: c, jev: jevProibido }), null);
   assert.deepEqual(registro(), []);
+});
+
+test('no Bash, o destino sai só do segmento da saída, não de outro comando da mesma linha', async () => {
+  const t = transcript(prompt(), uso('Bash', { command: 'ls' }));
+  const cmd = 'r=$(meu-cli dossie --para dono --conversa Beltrano | head -1); meu-envio texto --para Fulano --mensagem "ok"';
+  const saida = await executar(bash(cmd, { transcript_path: t }), { config: cfg('observar') });
+  assert.equal(saida, null);
+  assert.deepEqual(registro().map((e) => e.trecho), ['sem_leitura: Fulano']);
+});
+
+test('continuação de linha e substituição de comando não escondem o destino da saída', async () => {
+  const t = transcript(prompt(), uso('Bash', { command: 'ls' }));
+  for (const cmd of ['meu-envio texto \\\n  --para Fulano --mensagem ok', 'meu-envio texto --dossie $(gerar | head -1; true) --para Fulano --mensagem ok', 'meu-envio texto --dossie $(a $(b | c); d) --para Fulano']) {
+    assert.ok(negou(await executar(bash(cmd, { transcript_path: t }), { config: cfg('bloquear') })), cmd);
+  }
 });
