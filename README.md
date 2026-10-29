@@ -168,7 +168,7 @@ As reservadas nunca viram `sempre_aceita`, nem com todos os aceites. Para trocar
 
 ### Dupla quebra
 
-Duas leis diferentes quebradas no mesmo turno são o sinal de que a sessão perdeu o rumo. O registro ganha uma linha do hook `escalada` com as duas siglas (`T.O.P.+J.Á.`). Em `observar`, o padrão, é só isso. Em `pausar`, o hook encerra o turno (`continue: false`) com o motivo e roda o seu comando de aviso; a sua próxima mensagem retoma a sessão, que nunca é desligada:
+Duas leis diferentes quebradas no mesmo turno são o sinal de que a sessão perdeu o rumo. O registro ganha uma linha do hook `escalada` com as duas siglas (`T.O.P.+J.Á.`). A mensagem do aviso traz o nome da sessão (lido do fim do transcript, ou os 8 primeiros caracteres do id quando não há nome), o projeto e, para cada lei, o sinal e o começo do trecho que a disparou, mascarado e cortado em cerca de 80 caracteres: `Dupla quebra no mesmo turno na sessão "<nome>" (projeto <projeto>): <lei> (<sinal>: <trecho>) e <lei> (<sinal>: <trecho>); a sessão foi pausada.` Em `observar`, o padrão, é só isso. Em `pausar`, o hook encerra o turno (`continue: false`) com o motivo e roda o seu comando de aviso; a sua próxima mensagem retoma a sessão, que nunca é desligada:
 
 ```json
 { "escalada": { "modo": "pausar", "aviso": ["meu-aviso", "--texto", "{mensagem}"] } }

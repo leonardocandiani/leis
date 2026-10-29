@@ -130,7 +130,7 @@ async function conferirEscolha(entrada, texto, deps) {
   registrar({ ...base, lei: lei.sigla, decisao, sinal: sinalDaQuebra, prob: veredito.confianca, duracao_ms: duracao });
   const aviso = [instrucaoDeCorrecao(config, lei, vezes, bloqueios), notaDoAceite(categoria, aceite)].filter(Boolean).join(' ');
   const saida = decisao === 'bloqueada' ? { decision: 'block', reason: aviso } : { systemMessage: `[leis] ${aviso}` };
-  return escalar(saida, { entrada, config, lei, projeto: base.projeto }, deps);
+  return escalar(saida, { entrada, config, lei, projeto: base.projeto, sinal: sinalDaQuebra, trecho: base.trecho }, deps);
 }
 
 async function julgarOmissaoDeLeitura(config, lei, entrada, texto, deps) {

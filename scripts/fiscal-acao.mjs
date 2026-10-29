@@ -35,11 +35,12 @@ export function executar(entrada, deps = {}) {
   if (!lei) return null;
   const bloquear = modoDaLei(config, lei.numero) === 'bloquear';
   const projeto = nomeDoProjeto(entrada);
+  const comando = String(entrada.tool_input?.command ?? entrada.tool_name);
   registrar({
     sessao: entrada.session_id, projeto, hook: 'fiscal-acao', lei: lei.sigla, natureza: 'acao', sinal: regra,
-    decisao: bloquear ? 'negada' : 'observada', trecho: `${regra}: ${entrada.tool_input?.command ?? entrada.tool_name}`,
+    decisao: bloquear ? 'negada' : 'observada', trecho: `${regra}: ${comando}`,
   });
-  return escalar(bloquear ? saidaNegar(`${nomeCompleto(lei)}: ${motivo}`) : null, { entrada, config, lei, projeto }, deps);
+  return escalar(bloquear ? saidaNegar(`${nomeCompleto(lei)}: ${motivo}`) : null, { entrada, config, lei, projeto, sinal: regra, trecho: comando }, deps);
 }
 
 await principal(import.meta.url, executar);
