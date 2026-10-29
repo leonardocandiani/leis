@@ -309,10 +309,12 @@ export async function executar(entrada, deps = {}) {
   if (!achados.length) return null;
 
   const bloquear = modoDaLei(config, lei.numero) === 'bloquear';
-  registrar({ ...base, decisao: bloquear ? 'negada' : 'observada', sinal: [...new Set(achados.map((a) => a.tipo))].join('+'), duracao_ms: Date.now() - inicio, trecho: [...achados.map((a) => `${a.tipo}: ${a.fonte}`), ...(fontes.cortadas ? [`fontes_cortadas: ${fontes.cortadas}`] : [])].join('; ') });
+  const sinal = [...new Set(achados.map((a) => a.tipo))].join('+');
+  const detalhe = [...achados.map((a) => `${a.tipo}: ${a.fonte}`), ...(fontes.cortadas ? [`fontes_cortadas: ${fontes.cortadas}`] : [])].join('; ');
+  registrar({ ...base, decisao: bloquear ? 'negada' : 'observada', sinal, duracao_ms: Date.now() - inicio, trecho: detalhe });
   if (!bloquear) return null;
   const motivo = `${nomeCompleto(lei)}: ${lei.regra} ${achados.map((a) => (a.tipo === 'sem_leitura' ? a.texto : mascarar(a.texto))).join(' ')}${fontes.cortadas ? ` (fontes_cortadas: ${fontes.cortadas} arquivos além do teto não foram conferidos)` : ''} Para seguir mesmo assim, inclua no texto "LIDO: <o que você leu e concluiu>" (ao menos 10 caracteres).`;
-  return escalar(saidaNegar(motivo), { entrada, config, lei, projeto: base.projeto }, deps);
+  return escalar(saidaNegar(motivo), { entrada, config, lei, projeto: base.projeto, sinal, trecho: detalhe }, deps);
 }
 
 await principal(import.meta.url, executar);
