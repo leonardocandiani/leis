@@ -49,6 +49,9 @@ function nomeDaSessao(entrada) {
   return idCurto;
 }
 
+// Estado gravado pela versão anterior guardava só as siglas em `leis`.
+const quebrasGravadas = (anterior) => anterior.quebras ?? (anterior.leis ?? []).map((sigla) => ({ sigla, sinal: 'sem_sinal', trecho: '' }));
+
 // Acrescenta a quebra às do turno e devolve a lista só quando a lei é nova (a mesma lei de novo não conta).
 // Sem sessão ou sem transcript não há como saber o turno: juntar tudo daria dupla quebra falsa entre turnos.
 function quebrasDoTurno(entrada, quebra, deps) {
@@ -56,13 +59,14 @@ function quebrasDoTurno(entrada, quebra, deps) {
   const turno = sessao && entrada.transcript_path ? (deps.turnoAtual ?? turnoAtual)(entrada.transcript_path)?.id : null;
   if (!turno) return null;
   const anterior = lerEstado(sessao).quebras_turno;
-  const quebras = anterior?.turno === turno ? anterior.quebras : [];
+  const quebras = anterior?.turno === turno ? quebrasGravadas(anterior) : [];
   if (quebras.some((q) => q.sigla === quebra.sigla)) return null;
-  atualizarEstado(sessao, { quebras_turno: { turno, quebras: [...quebras, quebra] } });
-  return [...quebras, quebra];
+  const nova = { ...quebra, trecho: trecho(quebra.trecho, TETO_TRECHO) };
+  atualizarEstado(sessao, { quebras_turno: { turno, quebras: [...quebras, nova] } });
+  return [...quebras, nova];
 }
 
-const descrever = (q) => `${q.sigla} (${q.sinal}: ${trecho(q.trecho, TETO_TRECHO)})`;
+const descrever = (q) => `${q.sigla} (${q.sinal}: ${q.trecho})`;
 
 function mensagemDaEscalada(entrada, projeto, quebras, pausar) {
   const desfecho = pausar ? 'a sessão foi pausada' : 'em modo pausar, a sessão seria pausada';

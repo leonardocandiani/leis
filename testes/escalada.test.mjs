@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { executar } from '../scripts/fiscal-acao.mjs';
 import { validarEsquema } from '../scripts/leis.mjs';
+import { lerEstado, atualizarEstado } from '../scripts/estado.mjs';
 import { isolar, restaurar, configCom, registro } from './ajuda.mjs';
 
 beforeEach(isolar);
@@ -93,4 +94,21 @@ test('o trecho de cada quebra é mascarado e cortado em cerca de 80 caracteres',
   executar(laco({ tool_input: { command: `while true; do sleep 5; echo contato@exemplo.com ${'x'.repeat(200)}; done` } }), deps);
   assert.doesNotMatch(avisos[0], /contato@exemplo\.com/);
   assert.ok(avisos[0].length < 400);
+});
+
+test('o estado do turno guarda o trecho já mascarado e cortado', () => {
+  const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: () => {} };
+  executar(laco({ tool_input: { command: `while true; do sleep 5; echo contato@exemplo.com ${'x'.repeat(5000)}; done` } }), deps);
+  const gravado = JSON.stringify(lerEstado('s1').quebras_turno);
+  assert.doesNotMatch(gravado, /contato@exemplo\.com/);
+  assert.ok(gravado.length < 400);
+});
+
+test('estado do formato antigo (só siglas) no mesmo turno ainda escala', () => {
+  atualizarEstado('s1', { quebras_turno: { turno: 't1', leis: ['S.I.M.'] } });
+  const avisos = [];
+  const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: (_c, m) => avisos.push(m) };
+  const saida = executar(laco(), deps);
+  assert.equal(saida.continue, false);
+  assert.match(avisos[0], /S\.I\.M\. \(sem_sinal: \) e J\.Á\./);
 });
