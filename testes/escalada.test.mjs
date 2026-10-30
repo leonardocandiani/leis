@@ -112,3 +112,38 @@ test('estado do formato antigo (só siglas) no mesmo turno ainda escala', () => 
   assert.equal(saida.continue, false);
   assert.match(avisos[0], /S\.I\.M\. \(sem_sinal: \) e J\.Á\./);
 });
+
+const segredo = (comando, extra = {}) => ({ session_id: 's1', tool_name: 'Bash', tool_input: { command: comando }, transcript_path: '/t.jsonl', ...extra });
+const ESQUEMA = ['Bear', 'er'].join('');
+const literal = 'Zk9QwR3vLm7XcB2nHs5TyU8eJd4GfA6p';
+
+test('segredo literal fora do cofre só avisa: nunca pausa, mesmo em dupla quebra com a escalada em pausar', () => {
+  const avisos = [];
+  const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: (_c, m) => avisos.push(m), noCofre: () => false };
+  executar(pergunta(), deps);
+  const saida = executar(segredo(`curl -H "Authorization: ${ESQUEMA} ${literal}" https://api.exemplo.com.br`), deps);
+  assert.notEqual(saida?.continue, false);
+  assert.match(saida.hookSpecificOutput.additionalContext, /Lei 6/);
+  assert.equal(avisos.length, 1);
+  assert.match(avisos[0], /só aviso, nada foi pausado/);
+  assert.doesNotMatch(avisos[0], new RegExp(literal));
+  assert.equal(escaladas().length, 0);
+});
+
+test('segredo literal do cofre que não sai da máquina também só avisa', () => {
+  const avisos = [];
+  const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: (_c, m) => avisos.push(m), noCofre: () => true };
+  executar(pergunta(), deps);
+  const saida = executar(segredo(`echo "Authorization: ${ESQUEMA} ${literal}" > /tmp/x`), deps);
+  assert.notEqual(saida?.continue, false);
+  const local = executar(segredo(`curl -H "Authorization: ${ESQUEMA} ${literal}" http://localhost:3000/x`), deps);
+  assert.notEqual(local?.continue, false);
+  assert.equal(avisos.length, 2);
+});
+
+test('segredo literal que está no cofre e sai pela rede segue pausando em pausar', () => {
+  const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: () => {}, noCofre: () => true };
+  executar(pergunta(), deps);
+  const saida = executar(segredo(`curl -H "Authorization: ${ESQUEMA} ${literal}" https://api.exemplo.com.br`), deps);
+  assert.equal(saida.continue, false);
+});

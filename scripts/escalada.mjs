@@ -12,7 +12,7 @@ const TETO_AVISO_MS = 3000;
 
 const modoDaEscalada = (config) => (config.escalada?.modo === 'pausar' ? 'pausar' : 'observar');
 
-function avisar(config, mensagem) {
+export function avisar(config, mensagem) {
   const [programa, ...args] = (config.escalada?.aviso ?? []).map((a) => String(a).replaceAll('{mensagem}', mensagem));
   if (!programa) return;
   try {
@@ -26,7 +26,7 @@ const TETO_TRECHO = 80;
 const BYTES_DO_FIM = 1024 * 1024;
 
 // O nome da sessão só existe no transcript, numa linha custom-title. Lê só o último 1 MB: o arquivo passa de 80 mil linhas.
-function nomeDaSessao(entrada) {
+export function nomeDaSessao(entrada) {
   const idCurto = String(entrada.session_id).slice(0, 8);
   let fd;
   try {

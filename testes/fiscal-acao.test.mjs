@@ -29,6 +29,24 @@ test('classifica segredo literal e aceita variável', () => {
   assert.equal(classificar(bash('SSHPASS=$SENHA sshpass -e ssh host')), null);
 });
 
+test('valor de teste ou de exemplo não conta como segredo literal', () => {
+  const esquema = ['Bear', 'er'].join('');
+  const campo = ['access', 'token'].join('_');
+  const var_ = ['SSH', 'PASS'].join('');
+  for (const valor of ['token-de-teste', 'token-de-teste-do-crm-sync', 'abcdefghij-EXEMPLO-klmnop', 'your_api_token_goes_here', 'seu_token_aqui_1234567', 'fake-token-0123456789abcdef', '<TOKEN_DO_CLIENTE_AQUI>', '${TOKEN_DO_CLIENTE_AQUI}', '$TOKEN_DO_CLIENTE_AQUI']) {
+    assert.equal(classificar(bash(`curl -H "Authorization: ${esquema} ${valor}" https://x`)), null, valor);
+    assert.equal(classificar(bash(`curl "https://x?${campo}=${valor}"`)), null, valor);
+    assert.equal(classificar(bash(`${var_}=${valor} sshpass -e ssh host`)), null, valor);
+  }
+});
+
+test('valor real de 32 caracteres sem palavra de teste segue negado', () => {
+  const esquema = ['Bear', 'er'].join('');
+  const real = 'Zk9QwR3vLm7XcB2nHs5TyU8eJd4GfA6p';
+  assert.equal(classificar(bash(`curl -H "Authorization: ${esquema} ${real}" https://x`)), 'segredo_literal');
+  assert.equal(classificar(bash(`curl -H "Authorization: ${esquema} token-de-teste" -H "X: ${esquema} ${real}" https://x`)), 'segredo_literal');
+});
+
 test('AskUserQuestion é classificada; outras ferramentas, não', () => {
   assert.equal(classificar({ tool_name: 'AskUserQuestion', tool_input: {} }), 'pergunta_ao_dono');
   assert.equal(classificar({ tool_name: 'Read', tool_input: { file_path: 'a' } }), null);
@@ -47,13 +65,13 @@ test('modo bloquear nega com a lei e a correção', () => {
   assert.match(pergunta.hookSpecificOutput.permissionDecisionReason, /Lei 5 \(S\.I\.M\.\)/);
   const laco = executar(bash('while true; do sleep 5; done'), { config });
   assert.match(laco.hookSpecificOutput.permissionDecisionReason, /Lei 2 \(J\.Á\.\).*segundo plano/);
-  const segredo = executar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" x`), { config });
+  const segredo = executar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" https://api.exemplo.com.br`), { config, noCofre: () => true });
   assert.match(segredo.hookSpecificOutput.permissionDecisionReason, /Lei 6/);
   assert.deepEqual(registro().map((e) => e.decisao), ['negada', 'negada', 'negada']);
 });
 
 test('o trecho do segredo é mascarado no registro', () => {
-  executar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" x`), { config: configCom({}) });
+  executar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" x`), { config: configCom({}), noCofre: () => false, avisar: () => {} });
   assert.doesNotMatch(registro()[0].trecho, new RegExp(segredoLongo));
 });
 
