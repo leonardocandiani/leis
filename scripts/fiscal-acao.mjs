@@ -2,7 +2,7 @@
 // PreToolUse (Bash e AskUserQuestion): regras determinísticas, sem rede e sem ler arquivo grande.
 import { nomeDoProjeto, principal, projetoTem, saidaContexto, saidaNegar } from './entrada.mjs';
 import { carregarConfig, leiPorPapel, modoDaLei, nomeCompleto } from './leis.mjs';
-import { avisar as avisarCentral, escalar, nomeDaSessao } from './escalada.mjs';
+import { avisarAgrupado, escalar, nomeDaSessao } from './escalada.mjs';
 import { noCofre } from './cofre.mjs';
 import { registrar } from './registro.mjs';
 
@@ -49,7 +49,7 @@ function avisarSegredo(entrada, config, lei, deps) {
   const comando = String(entrada.tool_input?.command ?? '');
   registrar({ sessao: entrada.session_id, projeto, hook: 'fiscal-acao', lei: lei.sigla, natureza: 'acao', sinal: 'segredo_literal', decisao: 'avisada', trecho: `segredo_literal: ${comando}` });
   const motivo = `${nomeCompleto(lei)}: ${REGRAS.segredo_literal.motivo}`;
-  (deps.avisar ?? avisarCentral)(config, `Segredo literal no comando da sessão "${nomeDaSessao(entrada)}" (projeto ${projeto ?? 'sem projeto'}): valor fora do cofre ou que não sai da máquina; só aviso, nada foi pausado.`);
+  avisarAgrupado(config, { sessao: entrada.session_id, regra: 'segredo_literal' }, `Segredo literal no comando da sessão "${nomeDaSessao(entrada)}" (projeto ${projeto ?? 'sem projeto'}): valor fora do cofre ou que não sai da máquina; só aviso, nada foi pausado.`, deps);
   return saidaContexto('PreToolUse', `[leis] ${motivo}`);
 }
 

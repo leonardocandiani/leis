@@ -2,7 +2,9 @@
 // em `escalada.modo: "pausar"` o hook encerra o turno (continue: false) e roda o comando de aviso da config.
 // Nunca desliga a sessão: a próxima mensagem do dono retoma o trabalho.
 import { execFile } from 'node:child_process';
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
+import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { casaDoUsuario } from './leis.mjs';
 import { atualizarEstado, lerEstado } from './estado.mjs';
 import { turnoAtual } from './leitura.mjs';
 import { trecho } from './mascarar.mjs';
@@ -20,6 +22,57 @@ export function avisar(config, mensagem) {
   } catch {
     // o aviso nunca derruba o hook
   }
+}
+
+const JANELA_AVISO_MS = 60 * 60 * 1000;
+const PODA_AVISO_MS = 24 * JANELA_AVISO_MS;
+
+const arquivoDeAvisos = () => join(casaDoUsuario(), 'avisos.json');
+
+function lerAvisos() {
+  try {
+    const avisos = JSON.parse(readFileSync(arquivoDeAvisos(), 'utf8'));
+    return avisos && typeof avisos === 'object' && !Array.isArray(avisos) ? avisos : {};
+  } catch {
+    return {};
+  }
+}
+
+function gravarAvisos(avisos) {
+  try {
+    mkdirSync(casaDoUsuario(), { recursive: true });
+    const temporario = `${arquivoDeAvisos()}.${process.pid}.tmp`;
+    writeFileSync(temporario, JSON.stringify(avisos));
+    renameSync(temporario, arquivoDeAvisos());
+  } catch {
+    // sem estado gravável o próximo aviso sai de novo: defeito nosso libera
+  }
+}
+
+// Só para aviso informativo (nada pausado). Pausa nunca passa por aqui: cada uma precisa chegar à CENTRAL.
+// Aviso igual da mesma sessão (chave = sessão + regra) sai no máximo 1 vez por hora; as repetições só são contadas
+// e a contagem vai junto do primeiro aviso depois da hora. Estado ilegível deixa o aviso sair.
+export function avisarAgrupado(config, { sessao, regra }, mensagem, deps = {}) {
+  const enviar = deps.avisar ?? avisar;
+  let texto = mensagem;
+  try {
+    const agora = (deps.agora ?? Date.now)();
+    const chave = `${sessao}|${regra}`;
+    const avisos = Object.fromEntries(Object.entries(lerAvisos()).filter(([, v]) => agora - v?.em < PODA_AVISO_MS));
+    const anterior = avisos[chave];
+    if (anterior && agora - anterior.em < JANELA_AVISO_MS) {
+      avisos[chave] = { ...anterior, repeticoes: (anterior.repeticoes ?? 0) + 1 };
+      gravarAvisos(avisos);
+      return;
+    }
+    const repeticoes = anterior?.repeticoes ?? 0;
+    if (repeticoes > 0) texto = `${mensagem} (mais ${repeticoes} ${repeticoes === 1 ? 'vez' : 'vezes'} na última hora)`;
+    avisos[chave] = { em: agora, repeticoes: 0 };
+    gravarAvisos(avisos);
+  } catch {
+    // estado ilegível: o aviso sai sem agrupar
+  }
+  enviar(config, texto);
 }
 
 const TETO_TRECHO = 80;
