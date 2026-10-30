@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { executar, classificar } from '../scripts/fiscal-acao.mjs';
 import { isolar, restaurar, configCom, registro } from './ajuda.mjs';
@@ -104,4 +104,67 @@ test('lei sem o papel do fiscal: nada é fiscalizado por hook', () => {
   for (const l of c.config.leis) delete l.papel;
   assert.equal(executar({ tool_name: 'AskUserQuestion', tool_input: {} }, { config: c }), null);
   assert.equal(registro().length, 0);
+});
+
+const MIN = 60 * 1000;
+const comSegredo = () => bash(`curl -H "Authorization: ${['Bear', 'er'].join('')} ${segredoLongo}" https://x`);
+
+function disparar(sessao, comando, instante, avisos) {
+  const entrada = { ...comando, session_id: sessao };
+  executar(entrada, { config: configCom({}), noCofre: () => false, agora: () => instante, avisar: (_c, m) => avisos.push(m) });
+}
+
+test('quatro avisos iguais em 23 minutos geram um envio só', () => {
+  const avisos = [];
+  for (const min of [0, 7, 15, 23]) disparar('s1', comSegredo(), min * MIN, avisos);
+  assert.equal(avisos.length, 1);
+  assert.doesNotMatch(avisos[0], /na última hora/);
+});
+
+test('o primeiro aviso depois de uma hora sai com a contagem das repetições', () => {
+  const avisos = [];
+  for (const min of [0, 7, 15, 23]) disparar('s1', comSegredo(), min * MIN, avisos);
+  disparar('s1', comSegredo(), 61 * MIN, avisos);
+  assert.equal(avisos.length, 2);
+  assert.match(avisos[1], /\(mais 3 vezes na última hora\)$/);
+  disparar('s1', comSegredo(), 62 * MIN, avisos);
+  assert.equal(avisos.length, 2);
+});
+
+test('sessões diferentes não se juntam', () => {
+  const avisos = [];
+  disparar('s1', comSegredo(), 0, avisos);
+  disparar('s2', comSegredo(), MIN, avisos);
+  assert.equal(avisos.length, 2);
+});
+
+test('regras diferentes da mesma sessão não se juntam', () => {
+  const avisos = [];
+  const config = configCom({});
+  config.config.escalada = { modo: 'pausar', aviso: ['x', '{mensagem}'] };
+  const turno = { turnoAtual: () => ({ id: 't1', usos: [] }) };
+  const deps = { config, noCofre: () => false, agora: () => 0, avisar: (_c, m) => avisos.push(m), ...turno };
+  executar(comSegredo(), deps);
+  executar({ tool_name: 'AskUserQuestion', session_id: 's1', tool_input: {}, transcript_path: '/t.jsonl' }, deps);
+  executar({ ...bash('while true; do sleep 5; done'), transcript_path: '/t.jsonl' }, deps);
+  assert.equal(avisos.length, 2);
+  assert.match(avisos[0], /Segredo literal/);
+  assert.match(avisos[1], /Dupla quebra/);
+});
+
+test('estado de avisos corrompido não impede o envio', () => {
+  writeFileSync(join(process.env.LEIS_HOME, 'avisos.json'), '{não é json');
+  const avisos = [];
+  disparar('s1', comSegredo(), 0, avisos);
+  assert.equal(avisos.length, 1);
+  disparar('s1', comSegredo(), MIN, avisos);
+  assert.equal(avisos.length, 1);
+});
+
+test('entrada de aviso com mais de 24 horas é podada', () => {
+  const avisos = [];
+  disparar('s1', comSegredo(), 0, avisos);
+  disparar('s2', comSegredo(), 25 * 60 * MIN, avisos);
+  const estado = JSON.parse(readFileSync(join(process.env.LEIS_HOME, 'avisos.json'), 'utf8'));
+  assert.deepEqual(Object.keys(estado), ['s2|segredo_literal']);
 });

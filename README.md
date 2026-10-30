@@ -174,7 +174,7 @@ Duas leis diferentes quebradas no mesmo turno são o sinal de que a sessão perd
 { "escalada": { "modo": "pausar", "aviso": ["meu-aviso", "--texto", "{mensagem}"] } }
 ```
 
-O aviso tem teto de 3 s e nunca derruba o hook.
+O aviso tem teto de 3 s e nunca derruba o hook. Aviso igual da mesma sessão (mesma regra: dupla quebra ou segredo literal) sai no máximo uma vez por hora; as repetições só são contadas, e o primeiro aviso depois da hora traz "(mais N vezes na última hora)". O controle mora em `~/.claude/leis/avisos.json`, com entrada podada após 24 h; arquivo ilegível não impede o envio. O aviso à própria sessão não muda.
 
 Todo hook falha aberto e sai com código 0: erro do plugin nunca derruba a sua sessão. O caso que não casa não usa rede e custa cerca de 50 ms (um processo Node).
 

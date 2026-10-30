@@ -138,7 +138,7 @@ test('segredo literal do cofre que não sai da máquina também só avisa', () =
   assert.notEqual(saida?.continue, false);
   const local = executar(segredo(`curl -H "Authorization: ${ESQUEMA} ${literal}" http://localhost:3000/x`), deps);
   assert.notEqual(local?.continue, false);
-  assert.equal(avisos.length, 2);
+  assert.equal(avisos.length, 1);
 });
 
 test('segredo literal que está no cofre e sai pela rede segue pausando em pausar', () => {
