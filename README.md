@@ -102,7 +102,7 @@ O texto completo de cada uma, com erro e correção, está em `leis/modelo.json`
 | `sessao` | início da sessão | injeta uma linha com as siglas e o teste de cada lei |
 | `relato` | cada mensagem do dono | se ele corrige citando lei ("infringiu", "L2", a sigla, "de novo", "já te falei"), acha qual foi quebrada, registra e manda corrigir o padrão |
 | `fiscal-resposta` | fim de cada resposta | pergunta final ou cardápio ("quer que eu...") dispara o JEV, que diz se quebrou T.O.P. ou S.I.M. |
-| `fiscal-acao` | antes de Bash e AskUserQuestion | pergunta ao dono pelo terminal, laço com sleep em primeiro plano, segredo literal no comando (valor de teste ou de exemplo, como `token-de-teste` ou `<TOKEN>`, não conta) |
+| `fiscal-acao` | antes de Bash e AskUserQuestion | pergunta ao dono pelo terminal, laço com sleep em primeiro plano, segredo literal no comando (valor de teste ou de exemplo não conta; fora do cofre do keyfence ou sem sair da máquina só avisa, a pausa fica para valor do cofre indo para a rede) |
 | `fiscal-leitura` | antes de SendMessage, Agent, Workflow e dos Bash de envio que você configurar | fonte citada (arquivo, destino, nome) sem leitura nos últimos 30 min, ou consulta local que já acha o mesmo trabalho (L.I.D.A.) |
 
 Cada lei do modelo tem um `papel` (`pronto`, `antes`, `troca`, `leitura`, `sim`, `aval`). Os fiscais procuram a lei pelo papel, não pelo número: renumerar não quebra nada. Lei sem papel conhecido não é fiscalizada por hook, só pelo `relato` e pela auditoria.

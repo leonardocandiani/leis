@@ -65,13 +65,13 @@ test('modo bloquear nega com a lei e a correção', () => {
   assert.match(pergunta.hookSpecificOutput.permissionDecisionReason, /Lei 5 \(S\.I\.M\.\)/);
   const laco = executar(bash('while true; do sleep 5; done'), { config });
   assert.match(laco.hookSpecificOutput.permissionDecisionReason, /Lei 2 \(J\.Á\.\).*segundo plano/);
-  const segredo = executar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" x`), { config });
+  const segredo = executar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" https://api.exemplo.com.br`), { config, noCofre: () => true });
   assert.match(segredo.hookSpecificOutput.permissionDecisionReason, /Lei 6/);
   assert.deepEqual(registro().map((e) => e.decisao), ['negada', 'negada', 'negada']);
 });
 
 test('o trecho do segredo é mascarado no registro', () => {
-  executar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" x`), { config: configCom({}) });
+  executar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" x`), { config: configCom({}), noCofre: () => false, avisar: () => {} });
   assert.doesNotMatch(registro()[0].trecho, new RegExp(segredoLongo));
 });
 
