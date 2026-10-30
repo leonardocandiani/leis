@@ -138,18 +138,25 @@ test('sessões diferentes não se juntam', () => {
   assert.equal(avisos.length, 2);
 });
 
-test('regras diferentes da mesma sessão não se juntam', () => {
+test('regras diferentes da mesma sessão não se juntam, e cada pausa avisa sempre', () => {
   const avisos = [];
   const config = configCom({});
   config.config.escalada = { modo: 'pausar', aviso: ['x', '{mensagem}'] };
   const turno = { turnoAtual: () => ({ id: 't1', usos: [] }) };
   const deps = { config, noCofre: () => false, agora: () => 0, avisar: (_c, m) => avisos.push(m), ...turno };
+  const pergunta = { tool_name: 'AskUserQuestion', session_id: 's1', tool_input: {}, transcript_path: '/t.jsonl' };
+  const laco = { ...bash('while true; do sleep 5; done'), transcript_path: '/t.jsonl' };
   executar(comSegredo(), deps);
-  executar({ tool_name: 'AskUserQuestion', session_id: 's1', tool_input: {}, transcript_path: '/t.jsonl' }, deps);
-  executar({ ...bash('while true; do sleep 5; done'), transcript_path: '/t.jsonl' }, deps);
+  executar(pergunta, deps);
+  executar(laco, deps);
   assert.equal(avisos.length, 2);
   assert.match(avisos[0], /Segredo literal/);
   assert.match(avisos[1], /Dupla quebra/);
+  const outroTurno = { ...deps, turnoAtual: () => ({ id: 't2', usos: [] }), agora: () => MIN };
+  executar(pergunta, outroTurno);
+  executar(laco, outroTurno);
+  assert.equal(avisos.length, 3);
+  assert.match(avisos[2], /Dupla quebra/);
 });
 
 test('estado de avisos corrompido não impede o envio', () => {

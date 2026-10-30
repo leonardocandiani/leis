@@ -49,6 +49,7 @@ function gravarAvisos(avisos) {
   }
 }
 
+// Só para aviso informativo (nada pausado). Pausa nunca passa por aqui: cada uma precisa chegar à CENTRAL.
 // Aviso igual da mesma sessão (chave = sessão + regra) sai no máximo 1 vez por hora; as repetições só são contadas
 // e a contagem vai junto do primeiro aviso depois da hora. Estado ilegível deixa o aviso sair.
 export function avisarAgrupado(config, { sessao, regra }, mensagem, deps = {}) {
@@ -134,7 +135,7 @@ export function escalar(saida, { entrada, config, lei, projeto, sinal = 'sem_sin
     const mensagem = mensagemDaEscalada(entrada, projeto, quebras, pausar);
     registrar({ sessao: entrada.session_id, projeto, hook: 'escalada', lei: quebras.map((q) => q.sigla).join('+'), natureza: 'acao', decisao: pausar ? 'pausada' : 'observada', trecho: mensagem });
     if (!pausar) return saida;
-    avisarAgrupado(config, { sessao: entrada.session_id, regra: 'dupla_quebra' }, mensagem, deps);
+    (deps.avisar ?? avisar)(config, mensagem);
     return { ...saida, continue: false, stopReason: `[leis] ${mensagem} Corrija as duas antes de seguir; a próxima mensagem do dono retoma.` };
   } catch {
     return saida;
