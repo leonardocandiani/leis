@@ -29,6 +29,18 @@ test('classifica segredo literal e aceita variável', () => {
   assert.equal(classificar(bash('SSHPASS=$SENHA sshpass -e ssh host')), null);
 });
 
+test('código depois de Bearer ou access_token= não é segredo literal, valor opaco continua sendo', () => {
+  const esquema = ['Bear', 'er'].join('');
+  const campo = ['access', 'token'].join('_');
+  assert.equal(classificar(bash(`python3 - <<'EOF'\nlinha = "${esquema} ${'lista_de_destinatarios_ativos'}"\nEOF`)), null);
+  assert.equal(classificar(bash(`sed -i 's/x/${esquema} tokenDaSessaoAtual/' a.ts`)), null);
+  assert.equal(classificar(bash(`echo "${esquema} \${obterChaveAtual(env)}"`)), null);
+  assert.equal(classificar(bash(`curl "https://x?${campo}=\${obterChaveAtual(env)}"`)), null);
+  const uuid = '3f2b8c1e-9a4d-4e6b-8f1a-2c7d5e9b0a13';
+  assert.equal(classificar(bash(`curl -H "Authorization: ${esquema} ${uuid}" https://x`)), 'segredo_literal');
+  assert.equal(classificar(bash(`curl "https://x/recipients/${uuid}/whatsapp?${campo}=${uuid}"`)), 'segredo_literal');
+});
+
 test('valor de teste ou de exemplo não conta como segredo literal', () => {
   const esquema = ['Bear', 'er'].join('');
   const campo = ['access', 'token'].join('_');

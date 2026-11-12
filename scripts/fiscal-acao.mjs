@@ -11,7 +11,10 @@ const LACO_COM_SLEEP = /\b(?:while|until)\b[\s\S]*\bsleep\s+\d|\bfor\b[\s\S]*\bd
 const SEGREDOS = [/access_token=(?!\$)([^\s&"']{20,})/gi, /\bSSHPASS=["']?(?!\$)([^\s"']+)/g, /\bBearer\s+(?!\$)([A-Za-z0-9._~+/=-]{20,})/g];
 const VALOR_FICTICIO = /test|teste|exemplo|example|fake|dummy|placeholder|ficticio|mock|xxx|changeme|seu_|sua_|your_|^<.*>$|^\$\{|^\$\w/i;
 
-const valoresLiterais = (comando) => SEGREDOS.flatMap((r) => [...comando.matchAll(r)].map((m) => m[1])).filter((v) => !VALOR_FICTICIO.test(v));
+// Código escrito no comando (nome de variável, chamada, template) que vem depois de Bearer ou access_token= não é valor de segredo.
+const EXPRESSAO_DE_CODIGO = /[(){}]|^(?:[A-Za-z]+(?:_[A-Za-z]+)+|[a-z]+(?:[A-Z][a-z]*)+)$/;
+
+const valoresLiterais = (comando) => SEGREDOS.flatMap((r) => [...comando.matchAll(r)].map((m) => m[1])).filter((v) => !VALOR_FICTICIO.test(v) && !EXPRESSAO_DE_CODIGO.test(v));
 
 const FERRAMENTA_DE_REDE = /\b(?:curl|wget|http|httpie|xh|ssh|scp|sshpass|rsync)\b/;
 const ALVO_LOCAL = /^(?:localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\])(?:[:/]|$)/i;
