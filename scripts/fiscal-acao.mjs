@@ -14,7 +14,11 @@ const VALOR_FICTICIO = /test|teste|exemplo|example|fake|dummy|placeholder|fictic
 // Código escrito no comando (nome de variável, chamada, template) que vem depois de Bearer ou access_token= não é valor de segredo.
 const EXPRESSAO_DE_CODIGO = /[(){}]|^(?:[A-Za-z]+(?:_[A-Za-z]+)+|[a-z]+(?:[A-Z][a-z]*)+)$/;
 
-const valoresLiterais = (comando) => SEGREDOS.flatMap((r) => [...comando.matchAll(r)].map((m) => m[1])).filter((v) => !VALOR_FICTICIO.test(v) && !EXPRESSAO_DE_CODIGO.test(v));
+// Comando que escreve em *.test.ts ou *.spec.ts sem sair da máquina: o valor é constante de teste, a não ser que esteja no cofre.
+const ARQUIVO_DE_TESTE = /\.(?:test|spec)\.[cm]?[jt]sx?(?![\w])/i;
+const ehConstanteDeTeste = (comando, valor, deps) => ARQUIVO_DE_TESTE.test(comando) && !saiDaMaquina(comando) && !(deps.noCofre ?? noCofre)(valor);
+
+const valoresLiterais = (comando, deps = {}) => SEGREDOS.flatMap((r) => [...comando.matchAll(r)].map((m) => m[1])).filter((v) => !VALOR_FICTICIO.test(v) && !EXPRESSAO_DE_CODIGO.test(v) && !ehConstanteDeTeste(comando, v, deps));
 
 const FERRAMENTA_DE_REDE = /\b(?:curl|wget|http|httpie|xh|ssh|scp|sshpass|rsync)\b/;
 const ALVO_LOCAL = /^(?:localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\])(?:[:/]|$)/i;
@@ -33,12 +37,12 @@ const REGRAS = {
   segredo_literal: { papel: 'aval', motivo: 'segredo literal no comando vaza em log e histórico; use a variável de ambiente ou o arquivo de chaves.' },
 };
 
-export function classificar(entrada) {
+export function classificar(entrada, deps = {}) {
   if (entrada.tool_name === 'AskUserQuestion') return 'pergunta_ao_dono';
   if (entrada.tool_name !== 'Bash') return null;
   const comando = String(entrada.tool_input?.command ?? '');
   if (!GATILHOS.test(comando)) return null;
-  if (valoresLiterais(comando).length) return 'segredo_literal';
+  if (valoresLiterais(comando, deps).length) return 'segredo_literal';
   const emSegundoPlano = entrada.tool_input?.run_in_background === true;
   return !emSegundoPlano && LACO_COM_SLEEP.test(comando) ? 'laco_com_sleep' : null;
 }
@@ -58,7 +62,7 @@ function avisarSegredo(entrada, config, lei, deps) {
 
 export function executar(entrada, deps = {}) {
   if (projetoTem('scripts', 'central', 'hooks', 'portao.ts')) return null;
-  const regra = classificar(entrada);
+  const regra = classificar(entrada, deps);
   if (!regra) return null;
   const { config } = deps.config ?? carregarConfig();
   const { papel, motivo } = REGRAS[regra];

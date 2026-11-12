@@ -59,6 +59,26 @@ test('valor real de 32 caracteres sem palavra de teste segue negado', () => {
   assert.equal(classificar(bash(`curl -H "Authorization: ${esquema} token-de-teste" -H "X: ${esquema} ${real}" https://x`)), 'segredo_literal');
 });
 
+test('constante de teste escrita em *.test.ts sem sair da máquina não é segredo literal (a753), mas valor do cofre e comando de rede seguem marcados', () => {
+  const esquema = ['Bear', 'er'].join('');
+  const opaco = 'Zk9QwR3vLm7XcB2nHs5TyU8eJd4GfA6p';
+  const edita = (arquivo, valor) => `cd /x/central && python3 - <<'EOF'\np='${arquivo}'\ns=open(p).read()\ns=s.replace('A', 'headers: { Authorization: "${esquema} ${valor}" }')\nEOF`;
+  assert.equal(classificar(bash(edita('testes/modelos-workers.test.ts', opaco)), { noCofre: () => false }), null);
+  assert.equal(classificar(bash(edita('src/modelos.spec.ts', opaco)), { noCofre: () => false }), null);
+  assert.equal(classificar(bash(edita('testes/modelos-workers.test.ts', opaco)), { noCofre: () => true }), 'segredo_literal');
+  assert.equal(classificar(bash(edita('src/modelos.ts', opaco)), { noCofre: () => false }), 'segredo_literal');
+  assert.equal(classificar(bash(`curl -H "Authorization: ${esquema} ${opaco}" https://x # modelos.test.ts`), { noCofre: () => false }), 'segredo_literal');
+});
+
+test('o aviso 620d continua sem disparar (UUID em caminho sem Bearer) e token com prefixo conhecido continua marcado', () => {
+  const esquema = ['Bear', 'er'].join('');
+  const uuid = '3f2b8c1e-9a4d-4e6b-8f1a-2c7d5e9b0a13';
+  assert.equal(classificar(bash(`curl -s -X PUT -H 'content-type: application/json' -d '{"on":false}' https://x.test/service/recipients/${uuid}/whatsapp`)), null);
+  const corpo = 'Ab3dEf6hIj9lMn2pQr5tUv8xYz1B4dFg';
+  const tokens = [['sbp', '_', corpo], ['sk', '-', corpo], ['EAA', corpo], ['eyJ', 'hbGciOiJIUzI1NiJ9', '.', 'eyJzdWIiOiIxIn0', '.', 'SflKxwRJSMeKKF2QT4fw']].map((p) => p.join(''));
+  for (const t of tokens) assert.equal(classificar(bash(`curl -H "Authorization: ${esquema} ${t}" https://api.x.com.br`), { noCofre: () => false }), 'segredo_literal', t.slice(0, 4));
+});
+
 test('AskUserQuestion é classificada; outras ferramentas, não', () => {
   assert.equal(classificar({ tool_name: 'AskUserQuestion', tool_input: {} }), 'pergunta_ao_dono');
   assert.equal(classificar({ tool_name: 'Read', tool_input: { file_path: 'a' } }), null);
