@@ -7,7 +7,7 @@ import { noCofre } from './cofre.mjs';
 import { registrar } from './registro.mjs';
 
 const GATILHOS = /sleep|access_token|SSHPASS|Bearer/;
-const LACO_COM_SLEEP = /\b(?:while|until)\b[\s\S]*\bsleep\s+\d|\bfor\b[\s\S]*\bdo\b[\s\S]*\bsleep\s+\d/;
+const PASSO_DO_LACO = /\b(?:done\b|do\b|sleep\s+\d)/g;
 const SEGREDOS = [/access_token=(?!\$)([^\s&"']{20,})/gi, /\bSSHPASS=["']?(?!\$)([^\s"']+)/g, /\bBearer\s+(?!\$)([A-Za-z0-9._~+/=-]{20,})/g];
 const VALOR_FICTICIO = /test|teste|exemplo|example|fake|dummy|placeholder|ficticio|mock|xxx|changeme|seu_|sua_|your_|^<.*>$|^\$\{|^\$\w/i;
 
@@ -31,6 +31,17 @@ function saiDaMaquina(comando) {
   return alvos.length === 0 || alvos.some((a) => !ALVO_LOCAL.test(a));
 }
 
+// Só marca sleep entre o do e o done de um laço, contando aninhamento; espera única antes ou depois do laço não é laço de espera.
+function temSleepDentroDeLaco(comando) {
+  let fundo = 0;
+  for (const [passo] of comando.matchAll(PASSO_DO_LACO)) {
+    if (passo === 'do') fundo += 1;
+    else if (passo === 'done') fundo = Math.max(0, fundo - 1);
+    else if (fundo > 0) return true;
+  }
+  return false;
+}
+
 const REGRAS = {
   pergunta_ao_dono: { papel: 'sim', motivo: 'perguntar ao dono pelo terminal pede decisão que a sessão deve tomar sozinha; escolha o padrão, execute e avise depois.' },
   laco_com_sleep: { papel: 'antes', motivo: 'laço com sleep em primeiro plano trava a sessão; rode em segundo plano e acompanhe por monitor, sem esperar parado.' },
@@ -44,7 +55,7 @@ export function classificar(entrada, deps = {}) {
   if (!GATILHOS.test(comando)) return null;
   if (valoresLiterais(comando, deps).length) return 'segredo_literal';
   const emSegundoPlano = entrada.tool_input?.run_in_background === true;
-  return !emSegundoPlano && LACO_COM_SLEEP.test(comando) ? 'laco_com_sleep' : null;
+  return !emSegundoPlano && temSleepDentroDeLaco(comando) ? 'laco_com_sleep' : null;
 }
 
 // Pausa só quando o valor está no cofre (é real) e o comando o leva para fora da máquina.

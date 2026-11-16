@@ -21,6 +21,17 @@ test('classifica laço com sleep em primeiro plano e deixa passar o resto', () =
   assert.equal(classificar(bash('ls -la && git status')), null);
 });
 
+test('sleep fora do corpo do laço não é laço com sleep', () => {
+  assert.equal(classificar(bash('U=gui/501; for s in a b; do launchctl enable $U/x.$s; launchctl bootstrap $U ~/x.$s.plist; done; sleep 25; curl -s http://localhost:1984/api/streams')), null);
+  assert.equal(classificar(bash('while read l; do echo $l; done < f; sleep 5')), null);
+  assert.equal(classificar(bash('docker run x; sleep 5')), null);
+  assert.equal(classificar(bash('sleep 25; for i in 1 2; do echo $i; done')), null);
+  assert.equal(classificar(bash('for i in 1 2; do x; sleep 5; done')), 'laco_com_sleep');
+  assert.equal(classificar(bash('while true; do curl x; sleep 10; done')), 'laco_com_sleep');
+  assert.equal(classificar(bash('for a in 1 2; do for b in 3 4; do sleep 1; done; done')), 'laco_com_sleep');
+  assert.equal(classificar(bash('for a in 1 2; do for b in 3 4; do x; done; sleep 1; done; sleep 2')), 'laco_com_sleep');
+});
+
 test('classifica segredo literal e aceita variável', () => {
   assert.equal(classificar(bash(`curl -H "Authorization: Bearer ${segredoLongo}" https://x`)), 'segredo_literal');
   assert.equal(classificar(bash(`curl "https://x?access_token=${segredoLongo}"`)), 'segredo_literal');
