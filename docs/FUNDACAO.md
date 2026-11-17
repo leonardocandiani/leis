@@ -34,8 +34,8 @@ transcript (achar depois). Dizer que um hook "faz valer" essas duas seria promes
 ## Decisões
 
 **Observar antes de bloquear.** Todo modo nasce em `observar`: o hook registra e avisa, não nega. Só depois de medir
-o falso positivo (`/leis:leis-medir`) uma lei passa para `bloquear` na config. O bloqueio tem teto de um seguido por
-sessão, para nunca laçar com outros hooks de Stop. Alternativa descartada: nascer bloqueando, por ser a forma que
+o falso positivo (`/leis:leis-medir`) uma lei passa para `bloquear` na config. O bloqueio do Stop tem teto de três
+seguidos por turno, para nunca laçar com outros hooks de Stop; o das ferramentas não tem contador. Alternativa descartada: nascer bloqueando, por ser a forma que
 faz a lei "valer logo". Descartada porque um falso positivo que trava a sessão custa mais confiança do que a lei
 ganha.
 
