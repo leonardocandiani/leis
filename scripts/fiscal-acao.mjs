@@ -31,10 +31,16 @@ function saiDaMaquina(comando) {
   return alvos.length === 0 || alvos.some((a) => !ALVO_LOCAL.test(a));
 }
 
+const CORPO_DE_HEREDOC = /(<<-?\s*(['"]?)([A-Za-z_]\w*)\2[^\n]*)\n[\s\S]*?\n[ \t]*\3[ \t]*(?=\n|$)/g;
+const TEXTO_ENTRE_ASPAS = /'[^']*'|"(?:\\.|[^"\\])*"/g;
+
+// Corpo de heredoc e texto entre aspas são dado, não comando: "while true; do sleep 5; done" dentro de echo ou de mensagem de commit não é laço.
+const semTextoCitado = (comando) => comando.replace(CORPO_DE_HEREDOC, '$1 ').replace(TEXTO_ENTRE_ASPAS, ' ');
+
 // Só marca sleep entre o do e o done de um laço, contando aninhamento; espera única antes ou depois do laço não é laço de espera.
 function temSleepDentroDeLaco(comando) {
   let fundo = 0;
-  for (const [passo] of comando.matchAll(PASSO_DO_LACO)) {
+  for (const [passo] of semTextoCitado(comando).matchAll(PASSO_DO_LACO)) {
     if (passo === 'do') fundo += 1;
     else if (passo === 'done') fundo = Math.max(0, fundo - 1);
     else if (fundo > 0) return true;

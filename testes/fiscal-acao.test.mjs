@@ -21,6 +21,16 @@ test('classifica laço com sleep em primeiro plano e deixa passar o resto', () =
   assert.equal(classificar(bash('ls -la && git status')), null);
 });
 
+test('sleep em texto citado (aspas e heredoc) não é laço com sleep', () => {
+  assert.equal(classificar(bash('echo "while true; do sleep 5; done"')), null);
+  assert.equal(classificar(bash('git commit -m "para do dia"; sleep 3')), null);
+  assert.equal(classificar(bash("echo 'while true; do sleep 5; done'")), null);
+  assert.equal(classificar(bash("cat <<'EOF' > x.sh\nwhile true; do sleep 5; done\nEOF")), null);
+  assert.equal(classificar(bash("cat <<'EOF' > x.sh\nwhile true; do sleep 5; done\nEOF\nfor i in 1 2; do x; sleep 5; done")), 'laco_com_sleep');
+  assert.equal(classificar(bash('for i in 1 2; do x; sleep 5; done')), 'laco_com_sleep');
+  assert.equal(classificar(bash('while true; do curl "a b"; sleep 10; done')), 'laco_com_sleep');
+});
+
 test('sleep fora do corpo do laço não é laço com sleep', () => {
   assert.equal(classificar(bash('U=gui/501; for s in a b; do launchctl enable $U/x.$s; launchctl bootstrap $U ~/x.$s.plist; done; sleep 25; curl -s http://localhost:1984/api/streams')), null);
   assert.equal(classificar(bash('while read l; do echo $l; done < f; sleep 5')), null);
