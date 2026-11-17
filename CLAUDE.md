@@ -8,7 +8,7 @@ pela skill `leis`.
 
 1. **Zero dependência**: só a biblioteca padrão do Node.
 2. **Hook falha aberto**: erro, rede ou JEV fora do ar passam e registram; todo hook sai com código 0.
-3. **Observar antes de bloquear**: `modos` nasce em `observar`; bloqueio tem teto de 1 seguido por sessão.
+3. **Observar antes de bloquear**: `modos` nasce em `observar`; o bloqueio do Stop (`fiscal-resposta`) tem teto de 3 seguidos por turno, e o das ferramentas (`fiscal-acao` e `fiscal-leitura`, PreToolUse) não tem contador: nega a cada ocorrência enquanto a lei estiver em `bloquear`.
 4. **Nada do dono no repositório**: nome de cliente, telefone, id real e caminho de máquina ficam na config
    dele (`~/.claude/leis/leis.json`), nunca aqui. `testes/higiene.test.mjs` confere.
 5. **Registro mascarado**: todo trecho gravado passa por `scripts/mascarar.mjs`.
