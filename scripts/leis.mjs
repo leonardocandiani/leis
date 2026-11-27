@@ -104,6 +104,7 @@ function errosDaEscalada(escalada) {
   if (escalada === undefined) return [];
   if (!escalada || typeof escalada !== 'object' || Array.isArray(escalada)) return ['escalada deve ser objeto'];
   const erros = [];
+  // "pausar" segue aceito como sinônimo de avisar: a escalada por quebra de lei nunca pausa.
   if (escalada.modo !== undefined && !['observar', 'pausar'].includes(escalada.modo)) erros.push('escalada.modo deve ser "observar" ou "pausar"');
   if (escalada.aviso !== undefined && !ehListaDeTextos(escalada.aviso)) erros.push('escalada.aviso deve ser lista de textos (comando e argumentos, {mensagem} é trocado)');
   return erros;

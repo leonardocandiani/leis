@@ -32,15 +32,16 @@ test('duas leis no mesmo turno registram a dupla quebra; em observar a saída n�
   assert.match(e.trecho, /Dupla quebra no mesmo turno/);
 });
 
-test('em pausar, a segunda lei encerra o turno com stopReason e roda o aviso', () => {
+test('com a config em pausar, a dupla quebra de sessão com trabalho vivo só avisa: nunca pausa', () => {
   const avisos = [];
   const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: (_c, m) => avisos.push(m) };
   assert.equal(executar(pergunta(), deps), null);
   const saida = executar(laco(), deps);
-  assert.equal(saida.continue, false);
-  assert.match(saida.stopReason, /S\.I\.M\. \(.*e J\.Á\. \(.*próxima mensagem do dono retoma/);
+  assert.equal(saida, null);
   assert.equal(avisos.length, 1);
-  assert.equal(escaladas()[0].decisao, 'pausada');
+  assert.match(avisos[0], /S\.I\.M\. \(.*e J\.Á\. \(.*só aviso, nada foi pausado/);
+  assert.doesNotMatch(avisos[0], /a sessão foi pausada/);
+  assert.equal(escaladas()[0].decisao, 'avisada');
 });
 
 test('a mesma lei duas vezes, turnos diferentes ou sem transcript não escalam', () => {
@@ -53,6 +54,19 @@ test('a mesma lei duas vezes, turnos diferentes ou sem transcript não escalam',
   assert.equal(escaladas().length, 0);
 });
 
+test('em observar a dupla quebra só registra, sem aviso', () => {
+  const avisos = [];
+  const deps = { config: cfg({ modo: 'observar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: (_c, m) => avisos.push(m) };
+  executar(pergunta(), deps);
+  assert.equal(executar(laco(), deps), null);
+  assert.equal(avisos.length, 0);
+  assert.equal(escaladas()[0].decisao, 'observada');
+});
+
+test('"pausar" segue válido na config, como sinônimo de avisar', () => {
+  assert.deepEqual(validarEsquema(cfg({ modo: 'pausar', aviso: ['x', '{mensagem}'] }).config), []);
+});
+
 test('config da escalada é conferida', () => {
   const c = cfg({ modo: 'desligar', aviso: 'x' }).config;
   const erros = validarEsquema(c);
@@ -60,7 +74,7 @@ test('config da escalada é conferida', () => {
   assert.ok(erros.some((e) => /escalada.aviso/.test(e)));
 });
 
-test('o aviso diz a sessão pausada e o que cada quebra fez', () => {
+test('o aviso diz a sessão e o que cada quebra fez', () => {
   const raiz = process.env.HOME;
   const transcript = join(raiz, 'sessao.jsonl');
   writeFileSync(transcript, [
@@ -74,9 +88,9 @@ test('o aviso diz a sessão pausada e o que cada quebra fez', () => {
   const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: (_c, m) => avisos.push(m) };
   executar(pergunta({ transcript_path: transcript }), deps);
   const saida = executar(laco({ transcript_path: transcript }), deps);
-  const esperada = /Dupla quebra no mesmo turno na sessão "Sessão Sintética" \(projeto [^)]+\): S\.I\.M\. \([^:)]+: .+\) e J\.Á\. \(laco_com_sleep: while true; do sleep 5; done\); a sessão foi pausada\./;
+  const esperada = /Dupla quebra no mesmo turno na sessão "Sessão Sintética" \(projeto [^)]+\): S\.I\.M\. \([^:)]+: .+\) e J\.Á\. \(laco_com_sleep: while true; do sleep 5; done\); só aviso, nada foi pausado\./;
   assert.match(avisos[0], esperada);
-  assert.match(saida.stopReason, esperada);
+  assert.equal(saida, null);
 });
 
 test('sem nome no transcript, a sessão é identificada pelos 8 primeiros caracteres do id', () => {
@@ -104,12 +118,12 @@ test('o estado do turno guarda o trecho já mascarado e cortado', () => {
   assert.ok(gravado.length < 400);
 });
 
-test('estado do formato antigo (só siglas) no mesmo turno ainda escala', () => {
+test('estado do formato antigo (só siglas) no mesmo turno ainda escala, sem pausar', () => {
   atualizarEstado('s1', { quebras_turno: { turno: 't1', leis: ['S.I.M.'] } });
   const avisos = [];
   const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: (_c, m) => avisos.push(m) };
   const saida = executar(laco(), deps);
-  assert.equal(saida.continue, false);
+  assert.equal(saida, null);
   assert.match(avisos[0], /S\.I\.M\. \(sem_sinal: \) e J\.Á\./);
 });
 
@@ -141,7 +155,7 @@ test('segredo literal do cofre que não sai da máquina também só avisa', () =
   assert.equal(avisos.length, 1);
 });
 
-test('segredo literal que está no cofre e sai pela rede segue pausando em pausar', () => {
+test('segredo literal que está no cofre e sai pela rede segue pausando', () => {
   const deps = { config: cfg({ modo: 'pausar', aviso: ['avisar', '{mensagem}'] }), turnoAtual: noTurno('t1'), avisar: () => {}, noCofre: () => true };
   executar(pergunta(), deps);
   const saida = executar(segredo(`curl -H "Authorization: ${ESQUEMA} ${literal}" https://api.exemplo.com.br`), deps);

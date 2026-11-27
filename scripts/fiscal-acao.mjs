@@ -93,7 +93,7 @@ export function executar(entrada, deps = {}) {
     sessao: entrada.session_id, projeto, hook: 'fiscal-acao', lei: lei.sigla, natureza: 'acao', sinal: regra,
     decisao: bloquear ? 'negada' : 'observada', trecho: `${regra}: ${comando}`,
   });
-  return escalar(bloquear ? saidaNegar(`${nomeCompleto(lei)}: ${motivo}`) : null, { entrada, config, lei, projeto, sinal: regra, trecho: comando }, deps);
+  return escalar(bloquear ? saidaNegar(`${nomeCompleto(lei)}: ${motivo}`) : null, { entrada, config, lei, projeto, sinal: regra, trecho: comando, segredo: regra === 'segredo_literal' }, deps);
 }
 
 await principal(import.meta.url, executar);
