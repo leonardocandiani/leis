@@ -191,7 +191,7 @@ test('sessões diferentes não se juntam', () => {
   assert.equal(avisos.length, 2);
 });
 
-test('regras diferentes da mesma sessão não se juntam, e cada pausa avisa sempre', () => {
+test('regras diferentes da mesma sessão não se juntam, e a dupla quebra repetida na hora é agrupada', () => {
   const avisos = [];
   const config = configCom({});
   config.config.escalada = { modo: 'pausar', aviso: ['x', '{mensagem}'] };
@@ -208,8 +208,12 @@ test('regras diferentes da mesma sessão não se juntam, e cada pausa avisa semp
   const outroTurno = { ...deps, turnoAtual: () => ({ id: 't2', usos: [] }), agora: () => MIN };
   executar(pergunta, outroTurno);
   executar(laco, outroTurno);
+  assert.equal(avisos.length, 2);
+  const horaDepois = { ...outroTurno, turnoAtual: () => ({ id: 't3', usos: [] }), agora: () => 61 * MIN };
+  executar(pergunta, horaDepois);
+  executar(laco, horaDepois);
   assert.equal(avisos.length, 3);
-  assert.match(avisos[2], /Dupla quebra/);
+  assert.match(avisos[2], /Dupla quebra.*mais 1 vez na última hora/);
 });
 
 test('estado de avisos corrompido não impede o envio', () => {

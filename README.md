@@ -168,13 +168,13 @@ As reservadas nunca viram `sempre_aceita`, nem com todos os aceites. Para trocar
 
 ### Dupla quebra
 
-Duas leis diferentes quebradas no mesmo turno são o sinal de que a sessão perdeu o rumo. O registro ganha uma linha do hook `escalada` com as duas siglas (`T.O.P.+J.Á.`). A mensagem do aviso traz o nome da sessão (lido do fim do transcript, ou os 8 primeiros caracteres do id quando não há nome), o projeto e, para cada lei, o sinal e o começo do trecho que a disparou, mascarado e cortado em cerca de 80 caracteres: `Dupla quebra no mesmo turno na sessão "<nome>" (projeto <projeto>): <lei> (<sinal>: <trecho>) e <lei> (<sinal>: <trecho>); a sessão foi pausada.` Em `observar`, o padrão, é só isso. Em `pausar`, o hook encerra o turno (`continue: false`) com o motivo e roda o seu comando de aviso; a sua próxima mensagem retoma a sessão, que nunca é desligada:
+Duas leis diferentes quebradas no mesmo turno são o sinal de que a sessão perdeu o rumo. O registro ganha uma linha do hook `escalada` com as duas siglas (`T.O.P.+J.Á.`). A mensagem do aviso traz o nome da sessão (lido do fim do transcript, ou os 8 primeiros caracteres do id quando não há nome), o projeto e, para cada lei, o sinal e o começo do trecho que a disparou, mascarado e cortado em cerca de 80 caracteres: `Dupla quebra no mesmo turno na sessão "<nome>" (projeto <projeto>): <lei> (<sinal>: <trecho>) e <lei> (<sinal>: <trecho>); só aviso, nada foi pausado.` Em `observar`, o padrão, é só o registro. Em `pausar` (mantido como sinônimo de avisar, para não quebrar config antiga), o registro vai junto do seu comando de aviso. A dupla quebra nunca encerra o turno: a sessão pode estar com trabalho vivo, e a pausa só cabe em segredo real vazado (valor do cofre indo para fora da máquina), que encerra o turno (`continue: false`) e avisa sempre; a sua próxima mensagem retoma a sessão, que nunca é desligada:
 
 ```json
 { "escalada": { "modo": "pausar", "aviso": ["meu-aviso", "--texto", "{mensagem}"] } }
 ```
 
-O aviso tem teto de 3 s e nunca derruba o hook. Aviso igual da mesma sessão (segredo literal; a pausa por dupla quebra avisa sempre) sai no máximo uma vez por hora; as repetições só são contadas, e o primeiro aviso depois da hora traz "(mais N vezes na última hora)". O controle mora em `~/.claude/leis/avisos.json`, com entrada podada após 24 h; arquivo ilegível não impede o envio. O aviso à própria sessão não muda.
+O aviso tem teto de 3 s e nunca derruba o hook. Aviso igual da mesma sessão (segredo literal e dupla quebra; a pausa por segredo real avisa sempre) sai no máximo uma vez por hora; as repetições só são contadas, e o primeiro aviso depois da hora traz "(mais N vezes na última hora)". O controle mora em `~/.claude/leis/avisos.json`, com entrada podada após 24 h; arquivo ilegível não impede o envio. O aviso à própria sessão não muda.
 
 Todo hook falha aberto e sai com código 0: erro do plugin nunca derruba a sua sessão. O caso que não casa não usa rede e custa cerca de 50 ms (um processo Node).
 

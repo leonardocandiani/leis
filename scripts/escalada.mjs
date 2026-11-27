@@ -1,5 +1,6 @@
-// Dupla quebra: duas leis diferentes quebradas no mesmo turno são "o crime do crime". Nasce em observar (só registra);
-// em `escalada.modo: "pausar"` o hook encerra o turno (continue: false) e roda o comando de aviso da config.
+// Dupla quebra: duas leis diferentes quebradas no mesmo turno são "o crime do crime". Só avisa: em observar registra;
+// em `escalada.modo: "pausar"` (sinônimo aceito de avisar, para não quebrar config antiga) registra e roda o comando de aviso.
+// Pausa (continue: false) só cabe em segredo real vazado, marcado pelo chamador com `segredo: true`.
 // Nunca desliga a sessão: a próxima mensagem do dono retoma o trabalho.
 import { execFile } from 'node:child_process';
 import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, writeFileSync } from 'node:fs';
@@ -12,7 +13,7 @@ import { registrar } from './registro.mjs';
 
 const TETO_AVISO_MS = 3000;
 
-const modoDaEscalada = (config) => (config.escalada?.modo === 'pausar' ? 'pausar' : 'observar');
+const avisaNaEscalada = (config) => config.escalada?.modo === 'pausar';
 
 export function avisar(config, mensagem) {
   const [programa, ...args] = (config.escalada?.aviso ?? []).map((a) => String(a).replaceAll('{mensagem}', mensagem));
@@ -49,7 +50,7 @@ function gravarAvisos(avisos) {
   }
 }
 
-// Só para aviso informativo (nada pausado). Pausa nunca passa por aqui: cada uma precisa chegar à CENTRAL.
+// Só para aviso informativo (nada pausado). Pausa por segredo real nunca passa por aqui: cada uma precisa chegar à CENTRAL.
 // Aviso igual da mesma sessão (chave = sessão + regra) sai no máximo 1 vez por hora; as repetições só são contadas
 // e a contagem vai junto do primeiro aviso depois da hora. Estado ilegível deixa o aviso sair.
 export function avisarAgrupado(config, { sessao, regra }, mensagem, deps = {}) {
@@ -122,21 +123,25 @@ function quebrasDoTurno(entrada, quebra, deps) {
 const descrever = (q) => `${q.sigla} (${q.sinal}: ${q.trecho})`;
 
 function mensagemDaEscalada(entrada, projeto, quebras, pausar) {
-  const desfecho = pausar ? 'a sessão foi pausada' : 'em modo pausar, a sessão seria pausada';
+  const desfecho = pausar ? 'a sessão foi pausada' : 'só aviso, nada foi pausado';
   return `Dupla quebra no mesmo turno na sessão "${nomeDaSessao(entrada)}" (projeto ${projeto ?? 'sem projeto'}): ${quebras.map(descrever).join(' e ')}; ${desfecho}.`;
 }
 
-// Chamado depois de o hook registrar uma quebra. Devolve a saída do hook, com continue: false quando a escalada pausa.
-export function escalar(saida, { entrada, config, lei, projeto, sinal = 'sem_sinal', trecho: texto = '' }, deps = {}) {
+// Chamado depois de o hook registrar uma quebra. Devolve a saída do hook, com continue: false só quando uma das quebras é segredo real.
+export function escalar(saida, { entrada, config, lei, projeto, sinal = 'sem_sinal', trecho: texto = '', segredo = false }, deps = {}) {
   try {
-    const quebras = quebrasDoTurno(entrada, { sigla: lei.sigla, sinal, trecho: texto }, deps);
+    const quebras = quebrasDoTurno(entrada, { sigla: lei.sigla, sinal, trecho: texto, ...(segredo && { segredo }) }, deps);
     if (quebras?.length !== 2) return saida;
-    const pausar = modoDaEscalada(config) === 'pausar';
+    const pausar = quebras.some((q) => q.segredo);
+    const avisa = pausar || avisaNaEscalada(config);
     const mensagem = mensagemDaEscalada(entrada, projeto, quebras, pausar);
-    registrar({ sessao: entrada.session_id, projeto, hook: 'escalada', lei: quebras.map((q) => q.sigla).join('+'), natureza: 'acao', decisao: pausar ? 'pausada' : 'observada', trecho: mensagem });
-    if (!pausar) return saida;
-    (deps.avisar ?? avisar)(config, mensagem);
-    return { ...saida, continue: false, stopReason: `[leis] ${mensagem} Corrija as duas antes de seguir; a próxima mensagem do dono retoma.` };
+    registrar({ sessao: entrada.session_id, projeto, hook: 'escalada', lei: quebras.map((q) => q.sigla).join('+'), natureza: 'acao', decisao: pausar ? 'pausada' : avisa ? 'avisada' : 'observada', trecho: mensagem });
+    if (pausar) {
+      (deps.avisar ?? avisar)(config, mensagem);
+      return { ...saida, continue: false, stopReason: `[leis] ${mensagem} Corrija as duas antes de seguir; a próxima mensagem do dono retoma.` };
+    }
+    if (avisa) avisarAgrupado(config, { sessao: entrada.session_id, regra: 'dupla_quebra' }, mensagem, deps);
+    return saida;
   } catch {
     return saida;
   }
