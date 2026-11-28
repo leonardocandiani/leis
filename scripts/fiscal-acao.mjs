@@ -14,11 +14,21 @@ const VALOR_FICTICIO = /test|teste|exemplo|example|fake|dummy|placeholder|fictic
 // Código escrito no comando (nome de variável, chamada, template) que vem depois de Bearer ou access_token= não é valor de segredo.
 const EXPRESSAO_DE_CODIGO = /[(){}]|^(?:[A-Za-z]+(?:_[A-Za-z]+)+|[a-z]+(?:[A-Z][a-z]*)+)$/;
 
+// Token de app da Meta montado como id público, barra vertical (ou %7C) e variável: só é literal se o próprio comando atribui valor por extenso a ela.
+const TOKEN_DE_APP_COM_VARIAVEL = /^\d{6,20}(?:\||%7C)\$(\{?)([A-Za-z_]\w*)(\}?)$/i;
+const atribuidaPorExtenso = (comando, nome) => new RegExp(`(?:^|\\s|;|\\(|&&)${nome}=["']?[^\\s;&|"'$\`]+["']?(?=\\s|;|&|\\)|$)`).test(comando);
+
 // Comando que escreve em *.test.ts ou *.spec.ts sem sair da máquina: o valor é constante de teste, a não ser que esteja no cofre.
 const ARQUIVO_DE_TESTE = /\.(?:test|spec)\.[cm]?[jt]sx?(?![\w])/i;
 const ehConstanteDeTeste = (comando, valor, deps) => ARQUIVO_DE_TESTE.test(comando) && !saiDaMaquina(comando) && !(deps.noCofre ?? noCofre)(valor);
 
-const valoresLiterais = (comando, deps = {}) => SEGREDOS.flatMap((r) => [...comando.matchAll(r)].map((m) => m[1])).filter((v) => !VALOR_FICTICIO.test(v) && !EXPRESSAO_DE_CODIGO.test(v) && !ehConstanteDeTeste(comando, v, deps));
+function ehLiteral(comando, valor, deps) {
+  const app = TOKEN_DE_APP_COM_VARIAVEL.exec(valor);
+  if (app && Boolean(app[1]) === Boolean(app[3])) return atribuidaPorExtenso(comando, app[2]);
+  return !VALOR_FICTICIO.test(valor) && !EXPRESSAO_DE_CODIGO.test(valor) && !ehConstanteDeTeste(comando, valor, deps);
+}
+
+const valoresLiterais = (comando, deps = {}) => SEGREDOS.flatMap((r) => [...comando.matchAll(r)].map((m) => m[1])).filter((v) => ehLiteral(comando, v, deps));
 
 const FERRAMENTA_DE_REDE = /\b(?:curl|wget|http|httpie|xh|ssh|scp|sshpass|rsync)\b/;
 const ALVO_LOCAL = /^(?:localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\])(?:[:/]|$)/i;
