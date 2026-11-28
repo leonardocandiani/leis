@@ -84,6 +84,30 @@ test('token de app (id numérico, barra vertical e variável) não é segredo li
   assert.equal(executar(chamada(`${id}%7C$APP_SECRET_DO_APP`), { config: configCom({}), noCofre: () => true }), null);
 });
 
+test('variável usada como segredo conta quando o próprio comando a preenche por extenso (issue 23)', () => {
+  const esquema = ['Bear', 'er'].join('');
+  const campo = ['access', 'token'].join('_');
+  const var_ = ['SSH', 'PASS'].join('');
+  const segredo = '9f3c'.repeat(8);
+  const comBarra = `1234|${'aB3d'.repeat(10)}`;
+  const uso = `curl -H "Authorization: ${esquema} $K" https://api.exemplo.com.br`;
+  const regra = (comando) => classificar(bash(comando), { noCofre: () => false });
+  for (const antes of [`K=${segredo}`, `K="${segredo}"`, `export K='${segredo}'`, `printf -v K %s ${segredo}`, `printf -v K '%s' "${segredo}"`, `printf -v K '${segredo}'`, `printf -v K '%s\\n' ${segredo}`, `read -r K <<< ${segredo}`, `read K <<<"${segredo}"`, `K='${comBarra}'`]) {
+    assert.equal(regra(`${antes}; ${uso}`), 'segredo_literal', antes);
+  }
+  assert.equal(regra(`K=${segredo}; curl "https://x?${campo}=$K"`), 'segredo_literal');
+  assert.equal(regra(`K=${segredo}; curl "https://x" -H "Authorization: ${esquema} \${K}"`), 'segredo_literal');
+  assert.equal(regra(`P=hunter2; ${var_}=$P sshpass -e ssh host`), 'segredo_literal');
+  for (const antes of ['set -a; . ./.env; set +a', 'K=$(grep -m1 NOME chaves.env)', 'K="$(cat arquivo)"', 'printf -v K %s "$(cat arquivo)"', 'read -r K < arquivo', 'read -r K <<< "$OUTRA"',
+    'K=/caminho/bem/longo/ate/o/arquivo', 'K=https://api.exemplo.com.br/caminho', 'K=curto', 'K=token-de-teste-bem-comprido-123', 'K="uma frase comprida com espaços no meio"', `K=${segredo}$SUFIXO`, `OUTRA_K=${segredo}`]) {
+    assert.equal(regra(`${antes}; ${uso}`), null, antes);
+  }
+  assert.equal(regra(`K=${segredo}; echo ok`), null);
+  assert.equal(regra(`curl "https://x?id=1&K=${segredo}" -H "Authorization: ${esquema} $K"`), null);
+  const config = configCom({ modos: { 6: 'bloquear' } });
+  assert.ok(executar(bash(`K=${segredo}; ${uso}`), { config, noCofre: () => false, avisar: () => {} }).hookSpecificOutput.additionalContext);
+});
+
 test('valor de teste ou de exemplo não conta como segredo literal', () => {
   const esquema = ['Bear', 'er'].join('');
   const campo = ['access', 'token'].join('_');
