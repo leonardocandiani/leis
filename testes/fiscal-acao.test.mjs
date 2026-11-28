@@ -62,6 +62,28 @@ test('código depois de Bearer ou access_token= não é segredo literal, valor o
   assert.equal(classificar(bash(`curl "https://x/recipients/${uuid}/whatsapp?${campo}=${uuid}"`)), 'segredo_literal');
 });
 
+test('token de app (id numérico, barra vertical e variável) não é segredo literal (21b3); com o segredo por extenso, continua sendo', () => {
+  const campo = ['access', 'token'].join('_');
+  const id = '8'.repeat(4) + '123456789012';
+  const porExtenso = '9f3c'.repeat(8);
+  const chamada = (valor) => bash(`curl "https://graph.facebook.com/v21.0/${id}/subscriptions?${campo}=${valor}"`);
+  const marcado = (valor) => assert.equal(classificar(chamada(valor), { noCofre: () => false }), 'segredo_literal', valor);
+  for (const barra of ['%7C', '%7c', '|']) {
+    for (const ref of ['$APP_SECRET_DO_APP', '${APP_SECRET_DO_APP}']) assert.equal(classificar(chamada(`${id}${barra}${ref}`)), null, `${barra}${ref}`);
+    marcado(`${id}${barra}${porExtenso}`);
+    marcado(`${id}${barra}$APP_SECRET_DO_APP.${porExtenso}`);
+  }
+  marcado(`${porExtenso}%7C$APP_SECRET_DO_APP`);
+  const comAntes = (antes, ref = '$S') => classificar(bash(`${antes}; ${chamada(`${id}%7C${ref}`).tool_input.command}`), { noCofre: () => false });
+  assert.equal(comAntes(`S=${porExtenso}`, '${S}'), 'segredo_literal');
+  assert.equal(comAntes(`true&&S=${porExtenso}`), 'segredo_literal');
+  assert.equal(comAntes('set -a', `$${campo}`), null);
+  assert.equal(classificar(bash(`curl -d ${campo}=${id}%7C$${campo} https://graph.facebook.com/v21.0/me`)), null);
+  for (const antes of [`S=${porExtenso}`, `S="${porExtenso}"`, `export S='${porExtenso}'`]) assert.equal(comAntes(antes), 'segredo_literal', antes);
+  for (const antes of ['set -a; . ./chaves.env; set +a', 'S=$(grep -m1 NOME chaves.env)', 'S="$(cat arquivo)"', 'S=`cat arquivo`', 'S="$OUTRA"', `OUTRO_S=${porExtenso}`]) assert.equal(comAntes(antes), null, antes);
+  assert.equal(executar(chamada(`${id}%7C$APP_SECRET_DO_APP`), { config: configCom({}), noCofre: () => true }), null);
+});
+
 test('valor de teste ou de exemplo não conta como segredo literal', () => {
   const esquema = ['Bear', 'er'].join('');
   const campo = ['access', 'token'].join('_');
