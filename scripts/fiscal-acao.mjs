@@ -14,21 +14,39 @@ const VALOR_FICTICIO = /test|teste|exemplo|example|fake|dummy|placeholder|fictic
 // Código escrito no comando (nome de variável, chamada, template) que vem depois de Bearer ou access_token= não é valor de segredo.
 const EXPRESSAO_DE_CODIGO = /[(){}]|^(?:[A-Za-z]+(?:_[A-Za-z]+)+|[a-z]+(?:[A-Z][a-z]*)+)$/;
 
-// Token de app da Meta montado como id público, barra vertical (ou %7C) e variável: só é literal se o próprio comando atribui valor por extenso a ela.
-const TOKEN_DE_APP_COM_VARIAVEL = /^\d{6,20}(?:\||%7C)\$(\{?)([A-Za-z_]\w*)(\}?)$/i;
-const atribuidaPorExtenso = (comando, nome) => new RegExp(`(?:^|\\s|;|\\(|&&)${nome}=["']?[^\\s;&|"'$\`]+["']?(?=\\s|;|&|\\)|$)`).test(comando);
+// Token de app da Meta montado como id público, barra vertical (ou %7C) e variável: o token em si não é literal, quem é julgado é o valor da variável.
+const TOKEN_DE_APP_COM_VARIAVEL = /^\d{6,20}(?:\||%7C)\$(?:[A-Za-z_]\w*|\{[A-Za-z_]\w*\})$/i;
+
+// Variável usada como segredo, com o tamanho mínimo que o mesmo lugar exige do valor escrito direto.
+const USOS_DE_VARIAVEL = [
+  [/access_token=["']?(?:\d{6,20}(?:\||%7C))?\$\{?([A-Za-z_]\w*)/gi, 20],
+  [/\bBearer\s+["']?\$\{?([A-Za-z_]\w*)/g, 20],
+  [/\bSSHPASS=["']?\$\{?([A-Za-z_]\w*)/g, 1],
+];
+// Valor escrito por extenso: sem espaço, sem expansão e sem nada colado depois.
+const VALOR_ESCRITO = `(?:"([^"\\s$\`\\\\]+)"|'([^'\\s]+)'|([^\\s;&|"'$\`()<>]+))(?![^\\s;&|)<>])`;
+const FORMAS_DE_ATRIBUIR = [
+  (nome) => `(?:^|[\\s;(|]|&&)${nome}=`,
+  (nome) => `\\bprintf\\s+-v\\s+${nome}\\s+(?:(?:'%s(?:\\\\n)?'|"%s(?:\\\\n)?"|%s)\\s+)?`,
+  (nome) => `\\bread\\s+(?:-\\w+\\s+)*${nome}\\s*<<<\\s*`,
+];
+const CAMINHO_OU_URL = /^(?:[~.]?\/|https?:\/\/)/;
+
+const valoresAtribuidos = (comando, nome) => FORMAS_DE_ATRIBUIR.flatMap((forma) => [...comando.matchAll(new RegExp(forma(nome) + VALOR_ESCRITO, 'g'))].map((m) => m[1] ?? m[2] ?? m[3]));
+
+const nomesUsados = (comando, uso) => [...new Set([...comando.matchAll(uso)].map((m) => m[1]))];
+const valoresPorVariavel = (comando) => USOS_DE_VARIAVEL.flatMap(([uso, minimo]) => nomesUsados(comando, uso)
+  .flatMap((nome) => valoresAtribuidos(comando, nome))
+  .filter((v) => v.length >= minimo && !CAMINHO_OU_URL.test(v)));
 
 // Comando que escreve em *.test.ts ou *.spec.ts sem sair da máquina: o valor é constante de teste, a não ser que esteja no cofre.
 const ARQUIVO_DE_TESTE = /\.(?:test|spec)\.[cm]?[jt]sx?(?![\w])/i;
 const ehConstanteDeTeste = (comando, valor, deps) => ARQUIVO_DE_TESTE.test(comando) && !saiDaMaquina(comando) && !(deps.noCofre ?? noCofre)(valor);
 
-function ehLiteral(comando, valor, deps) {
-  const app = TOKEN_DE_APP_COM_VARIAVEL.exec(valor);
-  if (app && Boolean(app[1]) === Boolean(app[3])) return atribuidaPorExtenso(comando, app[2]);
-  return !VALOR_FICTICIO.test(valor) && !EXPRESSAO_DE_CODIGO.test(valor) && !ehConstanteDeTeste(comando, valor, deps);
-}
-
-const valoresLiterais = (comando, deps = {}) => SEGREDOS.flatMap((r) => [...comando.matchAll(r)].map((m) => m[1])).filter((v) => ehLiteral(comando, v, deps));
+const NAO_SAO_SEGREDO = [VALOR_FICTICIO, EXPRESSAO_DE_CODIGO, TOKEN_DE_APP_COM_VARIAVEL];
+const escritosNoUso = (comando) => SEGREDOS.flatMap((r) => [...comando.matchAll(r)].map((m) => m[1]));
+const valoresLiterais = (comando, deps = {}) => [...escritosNoUso(comando), ...valoresPorVariavel(comando)]
+  .filter((v) => !NAO_SAO_SEGREDO.some((r) => r.test(v)) && !ehConstanteDeTeste(comando, v, deps));
 
 const FERRAMENTA_DE_REDE = /\b(?:curl|wget|http|httpie|xh|ssh|scp|sshpass|rsync)\b/;
 const ALVO_LOCAL = /^(?:localhost|127\.\d+\.\d+\.\d+|0\.0\.0\.0|\[::1\])(?:[:/]|$)/i;
